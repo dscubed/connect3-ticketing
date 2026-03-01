@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CreateEventModal } from "@/components/events/CreateEventModal";
 import Image from "next/image";
 import {
   CalendarDays,
@@ -38,6 +39,7 @@ export function OrgDashboard() {
   const { user } = useAuthStore();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -78,11 +80,16 @@ export function OrgDashboard() {
             Manage your events and set up ticketing forms.
           </p>
         </div>
-        <Button disabled className="gap-2">
+        <Button className="gap-2" onClick={() => setCreateModalOpen(true)}>
           <Plus className="h-4 w-4" />
           Create Event
         </Button>
       </div>
+
+      <CreateEventModal
+        open={createModalOpen}
+        onOpenChange={setCreateModalOpen}
+      />
 
       {/* Events grid */}
       {loading ? (

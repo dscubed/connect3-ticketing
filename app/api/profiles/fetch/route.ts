@@ -130,8 +130,26 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ data });
     }
 
+    // --- List mode (filters only, no search term) ---
+    if (Object.keys(filters).length > 0) {
+      let query = supabase.from(table).select(select).limit(limit);
+      for (const [key, val] of Object.entries(filters)) {
+        query = query.eq(key, val);
+      }
+      const excludeId = searchParams.get("excludeId");
+      if (excludeId) {
+        query = query.neq("id", excludeId);
+      }
+      const { data, error } = await query;
+      if (error) {
+        console.error("Profile list error:", error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      return NextResponse.json({ data });
+    }
+
     return NextResponse.json(
-      { error: "Provide 'id', 'ids', or 'search' parameter" },
+      { error: "Provide 'id', 'ids', 'search', or 'filter' parameter" },
       { status: 400 },
     );
   } catch (error) {
