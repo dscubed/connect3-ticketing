@@ -1,11 +1,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { PreviewInputProps } from "../shared/types";
 
-interface DescriptionCardProps {
-  description: string;
-}
+type DescriptionCardProps = PreviewInputProps<string>;
 
 /** Read-only event description card with "No description provided" fallback. */
-export function DescriptionCard({ description }: DescriptionCardProps) {
+export function DescriptionCard({ value }: DescriptionCardProps) {
   return (
     <Card>
       <CardHeader>
@@ -14,10 +13,10 @@ export function DescriptionCard({ description }: DescriptionCardProps) {
       <CardContent>
         <p
           className={`whitespace-pre-wrap text-sm leading-relaxed ${
-            description ? "text-foreground/90" : "italic text-muted-foreground"
+            value ? "text-foreground/90" : "italic text-muted-foreground"
           }`}
         >
-          {description || "No description provided"}
+          {value || "No description provided"}
         </p>
       </CardContent>
     </Card>

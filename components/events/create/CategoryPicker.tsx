@@ -7,7 +7,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Check } from "lucide-react";
-import { CategoryPill } from "../shared/EventPills";
+import type { EditInputProps } from "../shared/types";
 
 const EVENT_CATEGORIES = [
   "Social",
@@ -21,10 +21,7 @@ const EVENT_CATEGORIES = [
   "Other",
 ] as const;
 
-interface CategoryPickerProps {
-  value: string;
-  onChange: (category: string) => void;
-}
+type CategoryPickerProps = EditInputProps<string>;
 
 export function CategoryPicker({ value, onChange }: CategoryPickerProps) {
   const [open, setOpen] = useState(false);
@@ -32,11 +29,16 @@ export function CategoryPicker({ value, onChange }: CategoryPickerProps) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <CategoryPill
-          value={value}
-          placeholder="Select Category"
-          onClick={() => setOpen((o) => !o)}
-        />
+        <button
+          type="button"
+          className={`inline-flex items-center rounded-full border px-3 py-1 text-sm transition-colors hover:bg-muted ${
+            value
+              ? "border-foreground/20 font-medium text-foreground"
+              : "border-muted-foreground/30 text-muted-foreground"
+          }`}
+        >
+          {value || "Select Category"}
+        </button>
       </PopoverTrigger>
       <PopoverContent className="w-44 p-1" align="start">
         {EVENT_CATEGORIES.map((cat) => (

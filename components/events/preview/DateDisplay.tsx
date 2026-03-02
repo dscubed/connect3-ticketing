@@ -1,5 +1,5 @@
 import { CalendarDays } from "lucide-react";
-import type { DateTimeData } from "../shared/types";
+import type { DateTimeData, PreviewInputProps } from "../shared/types";
 
 function formatDisplayDate(date: string, time: string): string {
   if (!date) return "";
@@ -16,9 +16,7 @@ function formatDisplayDate(date: string, time: string): string {
   return str;
 }
 
-interface DateDisplayProps {
-  value: DateTimeData;
-}
+type DateDisplayProps = PreviewInputProps<DateTimeData>;
 
 /** Read-only date/time display with calendar icon and timezone badge. */
 export function DateDisplay({ value }: DateDisplayProps) {

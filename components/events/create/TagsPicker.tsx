@@ -8,11 +8,11 @@ import {
 } from "@/components/ui/popover";
 import { Check, Plus } from "lucide-react";
 import { TagPill } from "../shared/EventPills";
+import type { EditInputProps } from "../shared/types";
 
 const AVAILABLE_TAGS = [
   "Free",
   "Paid",
-  "18+",
   "Food & Drinks",
   "Outdoor",
   "Indoor",
@@ -27,10 +27,7 @@ const AVAILABLE_TAGS = [
   "Study",
 ] as const;
 
-interface TagsPickerProps {
-  value: string[];
-  onChange: (tags: string[]) => void;
-}
+type TagsPickerProps = EditInputProps<string[]>;
 
 export function TagsPicker({ value, onChange }: TagsPickerProps) {
   const [open, setOpen] = useState(false);

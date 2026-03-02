@@ -28,7 +28,8 @@ import { TagsPicker } from "./create/TagsPicker";
 /* ── Preview-mode components ── */
 import {
   ImagePreview,
-  CategoryTagsDisplay,
+  CategoryDisplay,
+  TagsDisplay,
   DateDisplay,
   LocationDisplay,
   HostsDisplay,
@@ -377,8 +378,8 @@ export default function EventForm({
           <div className="space-y-6">
             {/* Thumbnail */}
             <div className="flex justify-center">
-              <div className="w-2/3">
-                <ImagePreview src={thumbnailUrl} />
+              <div className="w-2/5">
+                <ImagePreview value={thumbnailUrl ?? null} />
               </div>
             </div>
 
@@ -388,7 +389,11 @@ export default function EventForm({
             </h1>
 
             {/* Category + tags */}
-            <CategoryTagsDisplay category={form.category} tags={form.tags} />
+            <div className="flex flex-wrap items-center gap-2">
+              <CategoryDisplay value={form.category} />
+              <Separator className="h-5!" orientation="vertical" />
+              <TagsDisplay value={form.tags} />
+            </div>
 
             {/* Meta rows */}
             <div className="space-y-3">
@@ -402,13 +407,13 @@ export default function EventForm({
                 }}
               />
               <LocationDisplay value={form.location} />
-              <HostsDisplay creatorProfile={creatorProfile} hosts={hostsData} />
+              <HostsDisplay creatorProfile={creatorProfile} value={hostsData} />
             </div>
           </div>
 
           {/* Content cards */}
           <div className="mt-10 space-y-6">
-            <DescriptionCard description={form.description} />
+            <DescriptionCard value={form.description} />
 
             {/* Dynamic sections */}
             {sections.map((section) => (
@@ -427,7 +432,7 @@ export default function EventForm({
                 <AttentionBadge show={needsThumbnail} />
                 <ImageUpload
                   currentImage={existingThumbnail}
-                  onImageChange={(file) => updateField("thumbnailFile", file)}
+                  onChange={(file) => updateField("thumbnailFile", file)}
                 />
               </div>
             </div>
@@ -437,7 +442,7 @@ export default function EventForm({
               placeholder="Event Name"
               value={form.name}
               onChange={(e) => updateField("name", e.target.value)}
-              className="h-auto border-0 bg-transparent px-0 text-5xl! font-bold tracking-tight placeholder:text-muted-foreground/40 focus-visible:ring-0"
+              className="h-auto border-0 bg-transparent px-0 text-4xl! font-bold tracking-tight placeholder:text-muted-foreground/40 focus-visible:ring-0"
             />
 
             {/* Category pill + Tags pills */}
@@ -499,9 +504,8 @@ export default function EventForm({
                 <Users className="h-5 w-5 shrink-0 text-muted-foreground" />
                 <HostsPicker
                   creatorProfile={creatorProfile}
-                  selectedHosts={form.hostIds}
-                  selectedHostsData={hostsData}
-                  onChange={(ids, data) => {
+                  value={{ ids: form.hostIds, data: hostsData }}
+                  onChange={({ ids, data }) => {
                     updateField("hostIds", ids);
                     setHostsData(data);
                   }}

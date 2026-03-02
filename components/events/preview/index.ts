@@ -1,5 +1,6 @@
 export { ImagePreview } from "./ImagePreview";
-export { CategoryTagsDisplay } from "./CategoryTagsDisplay";
+export { CategoryDisplay } from "./CategoryDisplay";
+export { TagsDisplay } from "./TagsDisplay";
 export { DateDisplay } from "./DateDisplay";
 export { LocationDisplay } from "./LocationDisplay";
 export { HostsDisplay } from "./HostsDisplay";

@@ -1,9 +1,7 @@
 import { MapPin } from "lucide-react";
-import type { LocationData } from "../shared/types";
+import type { LocationData, PreviewInputProps } from "../shared/types";
 
-interface LocationDisplayProps {
-  value: LocationData;
-}
+type LocationDisplayProps = PreviewInputProps<LocationData>;
 
 /** Read-only location display — shows name + address, or "TBA" when empty. */
 export function LocationDisplay({ value }: LocationDisplayProps) {

@@ -1,19 +1,17 @@
 import Image from "next/image";
 import { ImagePlus } from "lucide-react";
+import type { PreviewInputProps } from "../shared/types";
 
-interface ImagePreviewProps {
-  /** Thumbnail URL to display */
-  src?: string | null;
-}
+type ImagePreviewProps = PreviewInputProps<string | null>;
 
 /** Read-only event thumbnail — shows the image or a dashed placeholder. */
-export function ImagePreview({ src }: ImagePreviewProps) {
+export function ImagePreview({ value }: ImagePreviewProps) {
   return (
     <div className="relative mx-auto w-full overflow-hidden rounded-xl">
-      {src ? (
+      {value ? (
         <div className="relative aspect-square w-full">
           <Image
-            src={src}
+            src={value}
             alt="Event thumbnail"
             fill
             className="object-cover"

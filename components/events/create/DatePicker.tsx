@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CalendarDays, Globe } from "lucide-react";
-import type { DateTimeData } from "../shared/types";
+import type { DateTimeData, EditInputProps } from "../shared/types";
 
 const POPULAR_TIMEZONES = [
   "Australia/Sydney",
@@ -70,10 +70,7 @@ function formatDisplayDate(date: string, time: string): string {
   return str;
 }
 
-interface DatePickerProps {
-  value: DateTimeData;
-  onChange: (data: DateTimeData) => void;
-}
+type DatePickerProps = EditInputProps<DateTimeData>;
 
 export function DatePicker({ value, onChange }: DatePickerProps) {
   const [open, setOpen] = useState(false);

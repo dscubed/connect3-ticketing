@@ -6,16 +6,15 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Users } from "lucide-react";
 import { HostAvatarStack } from "../shared/HostAvatarStack";
-import type { ClubProfile } from "../shared/types";
+import type { ClubProfile, PreviewInputProps } from "../shared/types";
 
-interface HostsDisplayProps {
+interface HostsDisplayProps extends PreviewInputProps<ClubProfile[]> {
   creatorProfile: ClubProfile;
-  hosts: ClubProfile[];
 }
 
 /** Read-only hosts display — avatar stack with HoverCard listing all hosts. */
-export function HostsDisplay({ creatorProfile, hosts }: HostsDisplayProps) {
-  const othersCount = hosts.length;
+export function HostsDisplay({ creatorProfile, value }: HostsDisplayProps) {
+  const othersCount = value.length;
   const displayLabel =
     othersCount > 0
       ? `${creatorProfile.first_name} + ${othersCount} other${othersCount > 1 ? "s" : ""}`
@@ -27,7 +26,7 @@ export function HostsDisplay({ creatorProfile, hosts }: HostsDisplayProps) {
       <HoverCard openDelay={200} closeDelay={100}>
         <HoverCardTrigger asChild>
           <div className="flex cursor-pointer items-center gap-2">
-            <HostAvatarStack creator={creatorProfile} hosts={hosts} />
+            <HostAvatarStack creator={creatorProfile} hosts={value} />
             <span className="text-sm text-muted-foreground">
               {displayLabel}
             </span>
@@ -38,7 +37,7 @@ export function HostsDisplay({ creatorProfile, hosts }: HostsDisplayProps) {
             Hosts
           </p>
           <div className="space-y-2">
-            {[creatorProfile, ...hosts].map((h) => (
+            {[creatorProfile, ...value].map((h) => (
               <div key={h.id} className="flex items-center gap-2">
                 <Avatar className="h-7 w-7">
                   {h.avatar_url && (

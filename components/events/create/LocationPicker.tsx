@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -21,7 +21,7 @@ import {
   ArrowLeft,
   Pencil,
 } from "lucide-react";
-import type { LocationData } from "../shared/types";
+import type { LocationData, EditInputProps } from "../shared/types";
 
 /* ── Nominatim types ── */
 interface NominatimResult {
@@ -81,16 +81,41 @@ function isAustralian(result: NominatimResult): boolean {
   return result.address?.country_code === "au";
 }
 
+/* ── Geolocation helpers ── */
+
+interface Coords {
+  lat: number;
+  lon: number;
+}
+
+/** Haversine distance in kilometres between two coordinates. */
+function haversineKm(a: Coords, b: Coords): number {
+  const R = 6371;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLon = toRad(b.lon - a.lon);
+  const sinLat = Math.sin(dLat / 2);
+  const sinLon = Math.sin(dLon / 2);
+  const h =
+    sinLat * sinLat +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * sinLon * sinLon;
+  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
 /* ── Hook: debounced Nominatim search ── */
-function useNominatimSearch(query: string, debounceMs = 500) {
-  const [results, setResults] = useState<NominatimResult[]>([]);
+function useNominatimSearch(
+  query: string,
+  userCoords: Coords | null,
+  debounceMs = 500,
+) {
+  const [rawResults, setRawResults] = useState<NominatimResult[]>([]);
   const [loading, setLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const trimmed = query.trim();
     if (trimmed.length < 3) {
-      setResults([]);
+      setRawResults([]);
       setLoading(false);
       return;
     }
@@ -122,16 +147,11 @@ function useNominatimSearch(query: string, debounceMs = 500) {
         );
         if (!res.ok) throw new Error("Nominatim request failed");
         const data: NominatimResult[] = await res.json();
-        const sorted = [...data].sort((a, b) => {
-          const aAu = isAustralian(a) ? 0 : 1;
-          const bAu = isAustralian(b) ? 0 : 1;
-          return aAu - bAu;
-        });
-        setResults(sorted);
+        setRawResults(data);
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === "AbortError") return;
         console.error("Location search error:", err);
-        setResults([]);
+        setRawResults([]);
       } finally {
         setLoading(false);
       }
@@ -142,23 +162,47 @@ function useNominatimSearch(query: string, debounceMs = 500) {
     };
   }, [query, debounceMs]);
 
+  /* Sort: AU first, then by distance to user (if available) */
+  const results = useMemo(() => {
+    return [...rawResults].sort((a, b) => {
+      const aAu = isAustralian(a) ? 0 : 1;
+      const bAu = isAustralian(b) ? 0 : 1;
+      if (aAu !== bAu) return aAu - bAu;
+      if (userCoords) {
+        const distA = haversineKm(userCoords, {
+          lat: parseFloat(a.lat),
+          lon: parseFloat(a.lon),
+        });
+        const distB = haversineKm(userCoords, {
+          lat: parseFloat(b.lat),
+          lon: parseFloat(b.lon),
+        });
+        return distA - distB;
+      }
+      return 0;
+    });
+  }, [rawResults, userCoords]);
+
   return { results, loading };
 }
 
 /* ── Dialog pages ── */
 type DialogPage = "search" | "confirm";
 
-interface LocationPickerProps {
-  value: LocationData;
-  onChange: (location: LocationData) => void;
-}
+type LocationPickerProps = EditInputProps<LocationData>;
 
 /** Location picker with dialog-based Nominatim search + manual input. */
 export function LocationPicker({ value, onChange }: LocationPickerProps) {
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState<DialogPage>("search");
   const [searchQuery, setSearchQuery] = useState("");
-  const { results, loading } = useNominatimSearch(searchQuery);
+
+  /* ── Geolocation for sorting ── */
+  const [userCoords, setUserCoords] = useState<Coords | null>(null);
+  const [locationAsked, setLocationAsked] = useState(false);
+  const [geoLoading, setGeoLoading] = useState(false);
+
+  const { results, loading } = useNominatimSearch(searchQuery, userCoords);
 
   const [draftDisplayName, setDraftDisplayName] = useState("");
   const [draftAddress, setDraftAddress] = useState("");
@@ -200,6 +244,30 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
     onChange({ displayName: "", address: "" });
     setOpen(false);
   }, [onChange]);
+
+  const handleEnableLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      setLocationAsked(true);
+      return;
+    }
+    setGeoLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserCoords({
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude,
+        });
+        setLocationAsked(true);
+        setGeoLoading(false);
+      },
+      () => {
+        // Denied or error — just hide the banner
+        setLocationAsked(true);
+        setGeoLoading(false);
+      },
+      { timeout: 10000 },
+    );
+  }, []);
 
   const handleBack = useCallback(() => {
     setPage("search");
@@ -252,6 +320,40 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
                   Search for an address or enter a custom location.
                 </DialogDescription>
               </DialogHeader>
+
+              {/* Location opt-in banner */}
+              {!locationAsked && (
+                <div className="flex items-start gap-2.5 rounded-md border border-border/60 bg-muted/40 px-3 py-2.5">
+                  <Navigation className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                  <p className="flex-1 text-xs leading-relaxed text-muted-foreground">
+                    Your location helps show the nearest results first.
+                    It&apos;s optional and won&apos;t be stored.
+                  </p>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={handleEnableLocation}
+                      disabled={geoLoading}
+                    >
+                      {geoLoading ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        "Enable"
+                      )}
+                    </Button>
+                    <button
+                      type="button"
+                      onClick={() => setLocationAsked(true)}
+                      className="rounded-sm p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Search input */}
               <div className="relative">

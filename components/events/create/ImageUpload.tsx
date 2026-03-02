@@ -13,18 +13,24 @@ import { ImagePlus, X } from "lucide-react";
 import ImageCropper from "@/components/ui/ImageCropper";
 import Image from "next/image";
 
+/**
+ * ImageUpload is a fire-and-forget file picker — the parent receives a File
+ * via onChange but cannot push a File back in as a controlled value.
+ * It does NOT extend EditInputProps because the input/output types differ
+ * (string URL in via currentImage, File out via onChange).
+ */
 interface ImageUploadProps {
   /** Current thumbnail URL (for edit mode) */
   currentImage?: string | null;
   /** Called with the cropped File when user confirms */
-  onImageChange: (file: File | null) => void;
+  onChange: (file: File | null) => void;
 }
 
 /**
  * Event thumbnail upload with 1:1 aspect crop.
  * Shows a drop zone / preview and opens a crop dialog on file select.
  */
-export function ImageUpload({ currentImage, onImageChange }: ImageUploadProps) {
+export function ImageUpload({ currentImage, onChange }: ImageUploadProps) {
   const [preview, setPreview] = useState<string | null>(currentImage ?? null);
   const [rawImage, setRawImage] = useState<string | null>(null);
   const [croppedFile, setCroppedFile] = useState<File | null>(null);
@@ -50,11 +56,11 @@ export function ImageUpload({ currentImage, onImageChange }: ImageUploadProps) {
     if (!croppedFile) return;
     const url = URL.createObjectURL(croppedFile);
     setPreview(url);
-    onImageChange(croppedFile);
+    onChange(croppedFile);
     setCropDialogOpen(false);
     if (rawImage) URL.revokeObjectURL(rawImage);
     setRawImage(null);
-  }, [croppedFile, rawImage, onImageChange]);
+  }, [croppedFile, rawImage, onChange]);
 
   const handleCropCancel = useCallback(() => {
     setCropDialogOpen(false);
@@ -66,8 +72,8 @@ export function ImageUpload({ currentImage, onImageChange }: ImageUploadProps) {
   const handleRemove = useCallback(() => {
     if (preview && !currentImage) URL.revokeObjectURL(preview);
     setPreview(null);
-    onImageChange(null);
-  }, [preview, currentImage, onImageChange]);
+    onChange(null);
+  }, [preview, currentImage, onChange]);
 
   return (
     <>

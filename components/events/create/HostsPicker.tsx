@@ -10,27 +10,21 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { PlusCircle, Search, Loader2, X } from "lucide-react";
 import { HostAvatarStack } from "../shared/HostAvatarStack";
-import type { ClubProfile } from "../shared/types";
+import type { ClubProfile, EditInputProps, HostsValue } from "../shared/types";
 
 const PAGE_SIZE = 20;
 
-interface HostsPickerProps {
+interface HostsPickerProps extends EditInputProps<HostsValue> {
   /** The creator's own profile — always displayed, cannot be removed */
   creatorProfile: ClubProfile;
-  /** Currently selected additional host IDs (NOT including the creator) */
-  selectedHosts: string[];
-  /** Selected host profile data (cached, excluding creator) */
-  selectedHostsData: ClubProfile[];
-  /** Called when selection changes */
-  onChange: (ids: string[], data: ClubProfile[]) => void;
 }
 
 export function HostsPicker({
   creatorProfile,
-  selectedHosts,
-  selectedHostsData,
+  value,
   onChange,
 }: HostsPickerProps) {
+  const { ids: selectedHosts, data: selectedHostsData } = value;
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -108,17 +102,20 @@ export function HostsPicker({
     if (club.id === creatorProfile.id) return;
     const isSelected = selectedHosts.includes(club.id);
     if (isSelected) {
-      onChange(
-        selectedHosts.filter((id) => id !== club.id),
-        selectedHostsData.filter((c) => c.id !== club.id),
-      );
+      onChange({
+        ids: selectedHosts.filter((id) => id !== club.id),
+        data: selectedHostsData.filter((c) => c.id !== club.id),
+      });
     } else {
-      onChange([...selectedHosts, club.id], [...selectedHostsData, club]);
+      onChange({
+        ids: [...selectedHosts, club.id],
+        data: [...selectedHostsData, club],
+      });
     }
   };
 
   const clearAll = () => {
-    onChange([], []);
+    onChange({ ids: [], data: [] });
   };
 
   const othersCount = selectedHostsData.length;
