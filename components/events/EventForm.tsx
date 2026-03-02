@@ -21,6 +21,10 @@ import {
 import { EventCategoryPicker } from "@/components/events/EventCategoryPicker";
 import { EventTagsPicker } from "@/components/events/EventTagsPicker";
 import {
+  EventLocationPicker,
+  type LocationData,
+} from "@/components/events/EventLocationPicker";
+import {
   EventChecklist,
   AttentionBadge,
   type ChecklistRefMap,
@@ -78,7 +82,7 @@ export interface EventFormData {
   endDate: string;
   endTime: string;
   timezone: string;
-  location: string;
+  location: LocationData;
   isOnline: boolean;
   category: string;
   tags: string[];
@@ -337,7 +341,7 @@ export default function EventForm({
     endTime: initialData?.endTime ?? "",
     timezone:
       initialData?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
-    location: initialData?.location ?? "",
+    location: initialData?.location ?? { displayName: "", address: "" },
     isOnline: initialData?.isOnline ?? false,
     category: initialData?.category ?? "",
     tags: initialData?.tags ?? [],
@@ -354,7 +358,7 @@ export default function EventForm({
   /* ── Attention badge helpers ── */
   const needsThumbnail = !form.thumbnailFile && !existingThumbnail;
   const needsStartDate = !form.startDate;
-  const needsLocation = !form.location;
+  const needsLocation = !form.location.displayName;
   const needsCategory = !form.category;
   const needsTags = form.tags.length < 2;
 
@@ -609,10 +613,19 @@ export default function EventForm({
                 <CalendarDays className="h-5 w-5 shrink-0 text-muted-foreground" />
                 <span className="text-base">{formatPreviewDate()}</span>
               </div>
-              {form.location && (
-                <div className="flex items-center gap-3">
+              {form.location.displayName && (
+                <div className="flex min-w-0 items-center gap-3">
                   <MapPin className="h-5 w-5 shrink-0 text-muted-foreground" />
-                  <span className="text-base">{form.location}</span>
+                  <div className="flex min-w-0 items-baseline gap-1.5">
+                    <span className="shrink-0 text-base font-medium">
+                      {form.location.displayName}
+                    </span>
+                    {form.location.address && (
+                      <span className="truncate text-sm text-muted-foreground">
+                        {form.location.address}
+                      </span>
+                    )}
+                  </div>
                 </div>
               )}
               <div className="flex items-center gap-3">
@@ -744,17 +757,11 @@ export default function EventForm({
               </div>
 
               {/* Location */}
-              <div
-                ref={locationRef}
-                className="relative flex w-fit min-w-48 items-center gap-3"
-              >
+              <div ref={locationRef} className="relative w-fit">
                 <AttentionBadge show={needsLocation} />
-                <MapPin className="h-5 w-5 shrink-0 text-muted-foreground" />
-                <Input
-                  placeholder="Add location"
+                <EventLocationPicker
                   value={form.location}
-                  onChange={(e) => updateField("location", e.target.value)}
-                  className="h-auto border-0 bg-transparent p-0 text-base placeholder:text-muted-foreground focus-visible:ring-0"
+                  onChange={(loc: LocationData) => updateField("location", loc)}
                 />
               </div>
 

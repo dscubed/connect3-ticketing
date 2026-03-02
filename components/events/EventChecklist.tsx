@@ -35,7 +35,7 @@ const CHECKLIST_ITEMS: ChecklistItem[] = [
   {
     id: "location",
     label: "Add a location",
-    check: (f) => !!f.location,
+    check: (f) => !!f.location.displayName,
   },
   {
     id: "category",
