@@ -78,6 +78,7 @@ export interface EventChecklistProps {
   /** Externally-managed set of dismissed item ids */
   dismissed: Set<string>;
   onDismissChange: (dismissed: Set<string>) => void;
+  isDark?: boolean;
 }
 
 export function EventChecklist({
@@ -87,6 +88,7 @@ export function EventChecklist({
   elementRefs,
   dismissed,
   onDismissChange,
+  isDark,
 }: EventChecklistProps) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -157,8 +159,12 @@ export function EventChecklist({
         <button
           onClick={() => setCollapsed(false)}
           className={cn(
-            "flex w-full items-center gap-2 rounded-full border bg-background px-4 py-2.5 shadow-lg transition-colors hover:bg-accent",
-            allDone && "border-green-500/30 bg-green-500/5",
+            "flex w-full items-center gap-2 rounded-full border px-4 py-2.5 shadow-lg transition-colors",
+            isDark
+              ? "border-neutral-700/60 bg-neutral-900/60 text-neutral-100 backdrop-blur-xl hover:bg-neutral-800/70"
+              : "bg-background hover:bg-accent",
+            allDone && !isDark && "border-green-500/30 bg-green-500/5",
+            allDone && isDark && "border-green-500/30 bg-green-900/30",
           )}
         >
           <ListChecks
@@ -175,9 +181,21 @@ export function EventChecklist({
           <ChevronUp className="h-4 w-4 text-muted-foreground" />
         </button>
       ) : (
-        <div className="rounded-xl border bg-background shadow-lg">
+        <div
+          className={cn(
+            "rounded-xl border shadow-lg",
+            isDark
+              ? "border-neutral-700/60 bg-neutral-900/60 text-neutral-100 backdrop-blur-xl"
+              : "bg-background",
+          )}
+        >
           {/* Header */}
-          <div className="flex items-center justify-between border-b px-4 py-3">
+          <div
+            className={cn(
+              "flex items-center justify-between border-b px-4 py-3",
+              isDark && "border-neutral-700/60",
+            )}
+          >
             <div className="flex items-center gap-2">
               <ListChecks className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm font-semibold">Event checklist</span>
@@ -196,7 +214,12 @@ export function EventChecklist({
 
           {/* Progress bar */}
           <div className="px-4 pt-3">
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className={cn(
+                "h-1.5 w-full overflow-hidden rounded-full",
+                isDark ? "bg-neutral-700" : "bg-muted",
+              )}
+            >
               <div
                 className="h-full rounded-full bg-green-500 transition-all duration-300"
                 style={{

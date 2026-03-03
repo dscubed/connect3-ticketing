@@ -1,12 +1,11 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Building2, Plus, Trash2, ImagePlus, GripVertical } from "lucide-react";
+import { Plus, Trash2, ImagePlus, GripVertical } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import type { CompaniesSectionData, Company, DragHandleProps } from "./types";
-import { SectionDragHandle } from "./SectionDragHandle";
+import { cn } from "@/lib/utils";
+import type { CompaniesSectionData, Company } from "./types";
 import { useRef, useMemo } from "react";
 import {
   DndContext,
@@ -29,8 +28,7 @@ import { CSS } from "@dnd-kit/utilities";
 interface CompaniesSectionCardProps {
   data: CompaniesSectionData;
   onChange: (data: CompaniesSectionData) => void;
-  onRemove: () => void;
-  dragHandleProps?: DragHandleProps;
+  isDark?: boolean;
 }
 
 /* ── Sortable Company row ── */
@@ -42,6 +40,7 @@ function SortableCompanyItem({
   onUpdate,
   onRemove,
   onLogoUpload,
+  isDark,
 }: {
   id: string;
   item: Company;
@@ -50,6 +49,7 @@ function SortableCompanyItem({
   onUpdate: (index: number, partial: Partial<Company>) => void;
   onRemove: (index: number) => void;
   onLogoUpload: (index: number, file: File) => void;
+  isDark?: boolean;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const {
@@ -73,7 +73,10 @@ function SortableCompanyItem({
     <div
       ref={setNodeRef}
       style={style}
-      className="group relative flex items-center gap-3 rounded-lg border p-3"
+      className={cn(
+        "group relative flex items-center gap-3 rounded-lg border p-3",
+        isDark && "border-neutral-600 bg-neutral-700",
+      )}
     >
       <button
         type="button"
@@ -99,8 +102,15 @@ function SortableCompanyItem({
               className="rounded-lg"
             />
           ) : null}
-          <AvatarFallback className="rounded-lg bg-muted">
-            <ImagePlus className="h-5 w-5 text-muted-foreground" />
+          <AvatarFallback
+            className={cn("rounded-lg bg-muted", isDark && "bg-neutral-600")}
+          >
+            <ImagePlus
+              className={cn(
+                "h-5 w-5 text-muted-foreground",
+                isDark && "text-neutral-400",
+              )}
+            />
           </AvatarFallback>
         </Avatar>
         <input
@@ -119,7 +129,11 @@ function SortableCompanyItem({
         placeholder="Company name"
         value={item.name}
         onChange={(e) => onUpdate(index, { name: e.target.value })}
-        className="h-8 flex-1 text-sm"
+        className={cn(
+          "h-8 flex-1 text-sm",
+          isDark &&
+            "border-neutral-600 bg-neutral-700 text-neutral-100 placeholder:text-neutral-400",
+        )}
       />
 
       {canRemove && (
@@ -139,8 +153,7 @@ function SortableCompanyItem({
 export function CompaniesSectionCard({
   data,
   onChange,
-  onRemove,
-  dragHandleProps,
+  isDark,
 }: CompaniesSectionCardProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -186,59 +199,42 @@ export function CompaniesSectionCard({
   };
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-        <div className="flex items-center gap-2">
-          {dragHandleProps && (
-            <SectionDragHandle dragHandleProps={dragHandleProps} />
-          )}
-          <Building2 className="h-5 w-5 text-muted-foreground" />
-          <CardTitle className="text-lg">Companies</CardTitle>
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onRemove}
-          className="h-8 text-muted-foreground hover:text-destructive"
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={itemIds}
-            strategy={verticalListSortingStrategy}
-          >
-            {data.items.map((item, i) => (
-              <SortableCompanyItem
-                key={itemIds[i]}
-                id={itemIds[i]}
-                item={item}
-                index={i}
-                canRemove={data.items.length > 1}
-                onUpdate={updateItem}
-                onRemove={removeItem}
-                onLogoUpload={handleLogoUpload}
-              />
-            ))}
-          </SortableContext>
-        </DndContext>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={addItem}
-          className="mt-3 w-full gap-1"
-        >
-          <Plus className="h-4 w-4" />
-          Add Company
-        </Button>
-      </CardContent>
-    </Card>
+    <div className="space-y-3">
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
+          {data.items.map((item, i) => (
+            <SortableCompanyItem
+              key={itemIds[i]}
+              id={itemIds[i]}
+              item={item}
+              index={i}
+              canRemove={data.items.length > 1}
+              onUpdate={updateItem}
+              onRemove={removeItem}
+              onLogoUpload={handleLogoUpload}
+              isDark={isDark}
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={addItem}
+        className={cn(
+          "mt-3 w-full gap-1",
+          isDark &&
+            "border-neutral-600 text-neutral-300 hover:bg-neutral-700 hover:text-white",
+        )}
+      >
+        <Plus className="h-4 w-4" />
+        Add Company
+      </Button>
+    </div>
   );
 }

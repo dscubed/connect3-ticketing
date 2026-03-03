@@ -15,6 +15,7 @@ import {
   Check,
 } from "lucide-react";
 import { useState } from "react";
+import { cn } from "@/lib/utils";
 import { SECTION_TYPES, SECTION_META, type SectionType } from "./types";
 
 const ICON_MAP: Record<SectionType, React.ElementType> = {
@@ -30,12 +31,14 @@ interface AddSectionButtonProps {
   onAdd: (type: SectionType) => void;
   /** Show a pinging blue dot on the button */
   showAttentionBadge?: boolean;
+  isDark?: boolean;
 }
 
 export function AddSectionButton({
   activeSections,
   onAdd,
   showAttentionBadge,
+  isDark,
 }: AddSectionButtonProps) {
   const [open, setOpen] = useState(false);
 
@@ -56,13 +59,26 @@ export function AddSectionButton({
               <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-blue-500" />
             </span>
           )}
-          <Button variant="outline" className="w-full gap-2">
+          <Button
+            variant="outline"
+            className={cn(
+              "w-full gap-2",
+              isDark &&
+                "border-neutral-600 text-neutral-300 hover:bg-neutral-700 hover:text-white",
+            )}
+          >
             <Plus className="h-4 w-4" />
             Add Section
           </Button>
         </div>
       </PopoverTrigger>
-      <PopoverContent className="w-64 p-1" align="center">
+      <PopoverContent
+        className={cn(
+          "w-64 p-1",
+          isDark && "border-neutral-700 bg-neutral-800",
+        )}
+        align="center"
+      >
         {SECTION_TYPES.map((type) => {
           const meta = SECTION_META[type];
           const Icon = ICON_MAP[type];
@@ -77,17 +93,37 @@ export function AddSectionButton({
                 onAdd(type);
                 setOpen(false);
               }}
-              className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+              className={cn(
+                "flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+                isDark
+                  ? "hover:bg-neutral-700 text-neutral-100"
+                  : "hover:bg-muted",
+              )}
             >
-              <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <Icon
+                className={cn(
+                  "h-4 w-4 shrink-0",
+                  isDark ? "text-neutral-400" : "text-muted-foreground",
+                )}
+              />
               <div className="flex-1">
                 <div className="font-medium">{meta.label}</div>
-                <div className="text-xs text-muted-foreground">
+                <div
+                  className={cn(
+                    "text-xs",
+                    isDark ? "text-neutral-400" : "text-muted-foreground",
+                  )}
+                >
                   {meta.description}
                 </div>
               </div>
               {alreadyAdded && (
-                <Check className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <Check
+                  className={cn(
+                    "h-4 w-4 shrink-0",
+                    isDark ? "text-neutral-400" : "text-muted-foreground",
+                  )}
+                />
               )}
             </button>
           );

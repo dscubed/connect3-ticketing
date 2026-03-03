@@ -9,5 +9,9 @@ export type {
   HostsValue,
   EventFormData,
   TicketTier,
+  ThemeMode,
+  ThemeLayout,
+  EventTheme,
+  ThemeColors,
 } from "./types";
-export { PRESET_TICKET_TYPES } from "./types";
+export { PRESET_TICKET_TYPES, DEFAULT_THEME, getThemeColors } from "./types";

@@ -4,45 +4,35 @@ import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 
 /* ── Shared ── */
 import type {
-  DateTimeData,
-  LocationData,
   ClubProfile,
   EventFormData,
   CarouselImage,
+  EventTheme,
 } from "./shared/types";
+import { DEFAULT_THEME, getThemeColors } from "./shared/types";
 
-/* ── Create-mode components ── */
-import { ImageCarousel } from "./create/ImageCarousel";
-import { ImageManagerDialog } from "./create/ImageManagerDialog";
-import { DatePicker } from "./create/DatePicker";
-import { LocationPicker } from "./create/LocationPicker";
-import { HostsPicker } from "./create/HostsPicker";
-import { CategoryPicker } from "./create/CategoryPicker";
-import { TagsPicker } from "./create/TagsPicker";
-import { PricingPicker } from "./create/PricingPicker";
-
-/* ── Preview-mode components ── */
+/* ── Unified field components ── */
 import {
-  ImageCarouselPreview,
-  CategoryDisplay,
-  TagsDisplay,
-  DateDisplay,
-  LocationDisplay,
-  HostsDisplay,
-  DescriptionCard,
-  FAQCard,
-  WhatToBringCard,
-  PanelistsCard,
-  CompaniesCard,
-  PricingDisplay,
-} from "./preview";
+  EventImageField,
+  EventNameField,
+  EventCategoryField,
+  EventTagsField,
+  EventDateField,
+  EventLocationField,
+  EventHostsField,
+  EventPricingField,
+  EventDescriptionField,
+  EventSectionField,
+} from "./fields";
+
+/* ── Create-only UI (dialogs) ── */
+import { ImageManagerDialog } from "./create/ImageManagerDialog";
+import { ThemeDialog } from "./create/ThemeDialog";
 
 /* ── Other ── */
 import {
@@ -51,10 +41,6 @@ import {
   type ChecklistRefMap,
 } from "./EventChecklist";
 import {
-  FAQSectionCard,
-  WhatToBringSectionCard,
-  PanelistsSectionCard,
-  CompaniesSectionCard,
   AddSectionButton,
   createBlankSection,
   type SectionType,
@@ -63,7 +49,7 @@ import {
   type DragHandleProps,
 } from "./sections";
 import { useAuthStore } from "@/stores/authStore";
-import { ArrowLeft, Eye, Loader2, Pencil, Users } from "lucide-react";
+import { ArrowLeft, Eye, Loader2, Palette, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import {
   DndContext,
@@ -141,6 +127,9 @@ export default function EventForm({
   const [previewMode, setPreviewMode] = useState(false);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
+  const viewMode = previewMode ? "preview" : "edit";
+  const isEditing = !previewMode;
+
   /* ── Checklist scroll-to refs ── */
   const thumbnailRef = useRef<HTMLDivElement>(null);
   const startDateRef = useRef<HTMLDivElement>(null);
@@ -177,7 +166,8 @@ export default function EventForm({
     hostIds: initialData?.hostIds ?? [],
     imageFiles: initialData?.imageFiles ?? [],
     pricing: initialData?.pricing ?? [],
-  });
+    theme: initialData?.theme ?? { ...DEFAULT_THEME },
+  } as EventFormData);
 
   // Cache the full profile objects for additional hosts
   const [hostsData, setHostsData] = useState<ClubProfile[]>([]);
@@ -194,6 +184,10 @@ export default function EventForm({
     })),
   );
   const [managerOpen, setManagerOpen] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
+  const [theme, setTheme] = useState<EventTheme>(
+    initialData?.theme ?? { ...DEFAULT_THEME },
+  );
 
   /* Sync form.imageFiles whenever carouselImages changes */
   useEffect(() => {
@@ -201,11 +195,20 @@ export default function EventForm({
     setForm((prev) => ({ ...prev, imageFiles: files }));
   }, [carouselImages]);
 
-  /* Derive preview URLs from carousel state */
-  const imagePreviewUrls = useMemo(
-    () => carouselImages.map((i) => i.preview),
-    [carouselImages],
-  );
+  /* Sync form.theme whenever theme changes */
+  useEffect(() => {
+    setForm((prev) => ({ ...prev, theme }));
+  }, [theme]);
+
+  /* ── Derived theme values ── */
+  const colors = useMemo(() => getThemeColors(theme.mode), [theme.mode]);
+  const isDark = colors.isDark;
+
+  const pageBgClass = colors.pageBg;
+  const pageTextClass = colors.text;
+
+  /** Cards should use darker surfaces when the page is in dark mode */
+  const cardDark = isDark;
 
   const handleManagerConfirm = useCallback((updated: CarouselImage[]) => {
     setCarouselImages(updated);
@@ -289,70 +292,45 @@ export default function EventForm({
     setSections((prev) => arrayMove(prev, oldIndex, newIndex));
   };
 
-  /* ── Render section card (edit mode) ── */
-  const renderEditSection = (
+  /* ── Render a single section (edit or preview) ── */
+  const renderSectionContent = (
     section: SectionData,
     index: number,
-    dragHandleProps: DragHandleProps,
-  ) => {
-    switch (section.type) {
-      case "faq":
-        return (
-          <FAQSectionCard
-            data={section}
-            onChange={(d) => updateSection(index, d)}
-            onRemove={() => removeSection(index)}
-            dragHandleProps={dragHandleProps}
-          />
-        );
-      case "what-to-bring":
-        return (
-          <WhatToBringSectionCard
-            data={section}
-            onChange={(d) => updateSection(index, d)}
-            onRemove={() => removeSection(index)}
-            dragHandleProps={dragHandleProps}
-          />
-        );
-      case "panelists":
-        return (
-          <PanelistsSectionCard
-            data={section}
-            onChange={(d) => updateSection(index, d)}
-            onRemove={() => removeSection(index)}
-            dragHandleProps={dragHandleProps}
-          />
-        );
-      case "companies":
-        return (
-          <CompaniesSectionCard
-            data={section}
-            onChange={(d) => updateSection(index, d)}
-            onRemove={() => removeSection(index)}
-            dragHandleProps={dragHandleProps}
-          />
-        );
-    }
-  };
-
-  /* ── Render section card (preview mode) ── */
-  const renderPreviewSection = (section: SectionData) => {
-    switch (section.type) {
-      case "faq":
-        return <FAQCard data={section} />;
-      case "what-to-bring":
-        return <WhatToBringCard data={section} />;
-      case "panelists":
-        return <PanelistsCard data={section} />;
-      case "companies":
-        return <CompaniesCard data={section} />;
-    }
-  };
+    dragHandleProps?: DragHandleProps,
+  ) => (
+    <div
+      ref={section.type === "faq" ? faqsRef : undefined}
+      className="relative"
+    >
+      {isEditing && section.type === "faq" && needsFaqBadge && (
+        <AttentionBadge show />
+      )}
+      <EventSectionField
+        mode={viewMode}
+        section={section}
+        index={index}
+        layout={theme.layout}
+        isDark={cardDark}
+        dragHandleProps={dragHandleProps}
+        onChange={updateSection}
+        onRemove={removeSection}
+      />
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-background pb-12">
-      {/* Top bar */}
-      <div className="sticky top-14 z-40 border-b bg-background/95 backdrop-blur">
+    <div
+      className={cn("min-h-screen pb-12", pageBgClass, colors.isDark && "dark")}
+    >
+      {/* Toolbar */}
+      <div
+        className={cn(
+          "sticky top-14 z-40 border-b transition-all",
+          isDark
+            ? "border-neutral-700/60 bg-neutral-900/60 text-neutral-100 backdrop-blur-xl"
+            : "bg-background/95 backdrop-blur",
+        )}
+      >
         <div className="mx-auto flex h-14 max-w-4xl items-center justify-between px-6">
           <Button
             variant="ghost"
@@ -363,8 +341,17 @@ export default function EventForm({
             <ArrowLeft className="h-4 w-4" />
             Back
           </Button>
+
           <div className="flex items-center gap-2">
-            {/* Preview / Edit toggle */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setThemeOpen(true)}
+            >
+              <Palette className="h-3.5 w-3.5" />
+              Theme
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -398,34 +385,69 @@ export default function EventForm({
         </div>
       </div>
 
-      {previewMode ? (
-        /* ═══════════════ PREVIEW MODE ═══════════════ */
-        <div className="mx-auto max-w-4xl px-6 py-8">
-          <div className="space-y-6">
-            {/* Photos carousel */}
-            <ImageCarouselPreview
-              value={
-                imagePreviewUrls.length > 0
-                  ? imagePreviewUrls
-                  : (existingImages ?? [])
-              }
+      {/* ── Single unified layout ── */}
+      <div className={cn("mx-auto max-w-4xl px-6 py-8", pageTextClass)}>
+        {/* Hero Section */}
+        <div className="space-y-6">
+          <div ref={thumbnailRef} className="relative w-full">
+            {isEditing && <AttentionBadge show={needsThumbnail} />}
+            <EventImageField
+              mode={viewMode}
+              images={carouselImages}
+              existingImages={existingImages}
+              onEditClick={() => setManagerOpen(true)}
             />
+          </div>
 
-            {/* Event name */}
-            <h1 className="text-4xl font-bold tracking-tight">
-              {form.name || "Untitled Event"}
-            </h1>
+          <EventNameField
+            mode={viewMode}
+            value={form.name}
+            onChange={(v) => updateField("name", v)}
+            className={pageTextClass}
+          />
 
-            {/* Category + tags */}
-            <div className="flex flex-wrap items-center gap-2">
-              <CategoryDisplay value={form.category} />
-              <Separator className="h-5!" orientation="vertical" />
-              <TagsDisplay value={form.tags} />
+          {/* Classic layout: separator below event name */}
+          {theme.layout === "classic" && (
+            <Separator className={cardDark ? "bg-neutral-700" : undefined} />
+          )}
+
+          <div
+            className={cn(
+              "flex flex-wrap items-center",
+              isEditing ? "gap-6" : "gap-2",
+            )}
+          >
+            <div ref={categoryRef} className="relative">
+              {isEditing && <AttentionBadge show={needsCategory} />}
+              <EventCategoryField
+                mode={viewMode}
+                value={form.category}
+                onChange={(cat) => updateField("category", cat)}
+              />
             </div>
+            <Separator
+              className={isEditing ? "h-6!" : "h-5!"}
+              orientation="vertical"
+            />
+            <div ref={tagsRef} className="relative">
+              {isEditing && <AttentionBadge show={needsTags} />}
+              <EventTagsField
+                mode={viewMode}
+                value={form.tags}
+                onChange={(tags) => updateField("tags", tags)}
+              />
+            </div>
+          </div>
 
-            {/* Meta rows */}
-            <div className="space-y-3">
-              <DateDisplay
+          {/* Meta rows */}
+          <div className="space-y-3">
+            <div
+              ref={startDateRef}
+              className={cn("relative", isEditing && "w-fit")}
+            >
+              {isEditing && <AttentionBadge show={needsStartDate} />}
+              <EventDateField
+                mode={viewMode}
                 value={{
                   startDate: form.startDate,
                   startTime: form.startTime,
@@ -433,139 +455,62 @@ export default function EventForm({
                   endTime: form.endTime,
                   timezone: form.timezone,
                 }}
+                onChange={(d) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    startDate: d.startDate,
+                    startTime: d.startTime,
+                    endDate: d.endDate,
+                    endTime: d.endTime,
+                    timezone: d.timezone,
+                  }))
+                }
               />
-              <LocationDisplay value={form.location} />
-              <HostsDisplay creatorProfile={creatorProfile} value={hostsData} />
-              <PricingDisplay value={form.pricing} />
             </div>
-          </div>
-
-          {/* Content cards */}
-          <div className="mt-10 space-y-6">
-            <DescriptionCard value={form.description} />
-
-            {/* Dynamic sections */}
-            {sections.map((section) => (
-              <div key={section.type}>{renderPreviewSection(section)}</div>
-            ))}
+            <div
+              ref={locationRef}
+              className={cn("relative", isEditing && "w-fit")}
+            >
+              {isEditing && <AttentionBadge show={needsLocation} />}
+              <EventLocationField
+                mode={viewMode}
+                value={form.location}
+                onChange={(loc) => updateField("location", loc)}
+              />
+            </div>
+            <EventHostsField
+              mode={viewMode}
+              creatorProfile={creatorProfile}
+              value={{ ids: form.hostIds, data: hostsData }}
+              onChange={({ ids, data }) => {
+                updateField("hostIds", ids);
+                setHostsData(data);
+              }}
+            />
+            <EventPricingField
+              mode={viewMode}
+              value={form.pricing}
+              onChange={(tiers) => updateField("pricing", tiers)}
+            />
           </div>
         </div>
-      ) : (
-        /* ═══════════════ EDIT MODE ═══════════════ */
-        <div className="mx-auto max-w-4xl px-6 py-8">
-          {/* ── Hero Section ── */}
-          <div className="space-y-6">
-            {/* Photo carousel (responsive: 1→3→5 visible) */}
-            <div ref={thumbnailRef} className="relative w-full">
-              <ImageCarousel
-                images={carouselImages}
-                onEditClick={() => setManagerOpen(true)}
-                showAttentionBadge={needsThumbnail}
-              />
-            </div>
 
-            {/* Event Name */}
-            <Input
-              placeholder="Event Name"
-              value={form.name}
-              onChange={(e) => updateField("name", e.target.value)}
-              className="h-auto border-0 bg-transparent px-0 text-4xl! font-bold tracking-tight placeholder:text-muted-foreground/40 focus-visible:ring-0"
-            />
+        {/* Content cards */}
+        <div
+          className={cn(
+            "mt-10",
+            theme.layout === "classic" ? "space-y-10" : "space-y-6",
+          )}
+        >
+          <EventDescriptionField
+            mode={viewMode}
+            value={form.description}
+            onChange={(v) => updateField("description", v)}
+            layout={theme.layout}
+            isDark={cardDark}
+          />
 
-            {/* Category pill + Tags pills */}
-            <div className="flex flex-wrap items-center gap-6">
-              <div ref={categoryRef} className="relative">
-                <AttentionBadge show={needsCategory} />
-                <CategoryPicker
-                  value={form.category}
-                  onChange={(cat) => updateField("category", cat)}
-                />
-              </div>
-              <Separator className="h-6!" orientation="vertical" />
-              <div ref={tagsRef} className="relative">
-                <AttentionBadge show={needsTags} />
-                <TagsPicker
-                  value={form.tags}
-                  onChange={(tags) => updateField("tags", tags)}
-                />
-              </div>
-            </div>
-
-            {/* ── Meta rows ── */}
-            <div className="space-y-3">
-              {/* Date */}
-              <div ref={startDateRef} className="relative w-fit">
-                <AttentionBadge show={needsStartDate} />
-                <DatePicker
-                  value={{
-                    startDate: form.startDate,
-                    startTime: form.startTime,
-                    endDate: form.endDate,
-                    endTime: form.endTime,
-                    timezone: form.timezone,
-                  }}
-                  onChange={(d: DateTimeData) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      startDate: d.startDate,
-                      startTime: d.startTime,
-                      endDate: d.endDate,
-                      endTime: d.endTime,
-                      timezone: d.timezone,
-                    }))
-                  }
-                />
-              </div>
-
-              {/* Location */}
-              <div ref={locationRef} className="relative w-fit">
-                <AttentionBadge show={needsLocation} />
-                <LocationPicker
-                  value={form.location}
-                  onChange={(loc: LocationData) => updateField("location", loc)}
-                />
-              </div>
-
-              {/* Hosts */}
-              <div className="flex items-center gap-3">
-                <Users className="h-5 w-5 shrink-0 text-muted-foreground" />
-                <HostsPicker
-                  creatorProfile={creatorProfile}
-                  value={{ ids: form.hostIds, data: hostsData }}
-                  onChange={({ ids, data }) => {
-                    updateField("hostIds", ids);
-                    setHostsData(data);
-                  }}
-                />
-              </div>
-
-              {/* Pricing */}
-              <PricingPicker
-                value={form.pricing}
-                onChange={(tiers) => updateField("pricing", tiers)}
-              />
-            </div>
-          </div>
-
-          {/* ── Content Cards ── */}
-          <div className="mt-10 space-y-6">
-            {/* Event Description */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Event Description</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Textarea
-                  placeholder="Tell people what your event is about..."
-                  value={form.description}
-                  onChange={(e) => updateField("description", e.target.value)}
-                  rows={6}
-                  className="resize-none"
-                />
-              </CardContent>
-            </Card>
-
-            {/* Dynamic section cards (sortable) */}
+          {isEditing ? (
             <DndContext
               sensors={sectionSensors}
               collisionDetection={closestCenter}
@@ -577,33 +522,31 @@ export default function EventForm({
               >
                 {sections.map((section, i) => (
                   <SortableSectionWrapper key={section.type} id={section.type}>
-                    {(dragHandleProps) => (
-                      <div
-                        ref={section.type === "faq" ? faqsRef : undefined}
-                        className="relative"
-                      >
-                        {section.type === "faq" && needsFaqBadge && (
-                          <AttentionBadge show />
-                        )}
-                        {renderEditSection(section, i, dragHandleProps)}
-                      </div>
-                    )}
+                    {(dragHandleProps) =>
+                      renderSectionContent(section, i, dragHandleProps)
+                    }
                   </SortableSectionWrapper>
                 ))}
               </SortableContext>
             </DndContext>
+          ) : (
+            sections.map((section, i) => (
+              <div key={section.type}>{renderSectionContent(section, i)}</div>
+            ))
+          )}
 
-            {/* Add Section / FAQ ref target (when no FAQ exists yet) */}
+          {isEditing && (
             <div ref={!faqSection ? faqsRef : undefined}>
               <AddSectionButton
                 activeSections={sections.map((s) => s.type)}
                 onAdd={addSection}
                 showAttentionBadge={faqBadgeOnAddSection}
+                isDark={isDark}
               />
             </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Image manager dialog */}
       <ImageManagerDialog
@@ -613,8 +556,16 @@ export default function EventForm({
         onConfirm={handleManagerConfirm}
       />
 
+      {/* Theme dialog */}
+      <ThemeDialog
+        open={themeOpen}
+        onOpenChange={setThemeOpen}
+        theme={theme}
+        onConfirm={setTheme}
+      />
+
       {/* Floating checklist (edit mode only) */}
-      {!previewMode && (
+      {isEditing && (
         <EventChecklist
           form={form}
           sections={sections}
@@ -622,6 +573,7 @@ export default function EventForm({
           elementRefs={checklistRefs}
           dismissed={dismissed}
           onDismissChange={setDismissed}
+          isDark={isDark}
         />
       )}
     </div>

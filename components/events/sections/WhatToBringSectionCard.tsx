@@ -1,11 +1,10 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Backpack, Plus, Trash2, GripVertical } from "lucide-react";
-import type { WhatToBringSectionData, DragHandleProps } from "./types";
-import { SectionDragHandle } from "./SectionDragHandle";
+import { Plus, Trash2, GripVertical } from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { WhatToBringSectionData } from "./types";
 import {
   DndContext,
   closestCenter,
@@ -28,8 +27,7 @@ import { useMemo } from "react";
 interface WhatToBringSectionCardProps {
   data: WhatToBringSectionData;
   onChange: (data: WhatToBringSectionData) => void;
-  onRemove: () => void;
-  dragHandleProps?: DragHandleProps;
+  isDark?: boolean;
 }
 
 /* ── Sortable item row ── */
@@ -40,6 +38,7 @@ function SortableBringItem({
   canRemove,
   onUpdate,
   onRemove,
+  isDark,
 }: {
   id: string;
   value: string;
@@ -47,6 +46,7 @@ function SortableBringItem({
   canRemove: boolean;
   onUpdate: (index: number, value: string) => void;
   onRemove: (index: number) => void;
+  isDark?: boolean;
 }) {
   const {
     attributes,
@@ -87,7 +87,11 @@ function SortableBringItem({
         placeholder="Item to bring..."
         value={value}
         onChange={(e) => onUpdate(index, e.target.value)}
-        className="flex-1"
+        className={cn(
+          "flex-1",
+          isDark &&
+            "border-neutral-600 bg-neutral-700 text-neutral-100 placeholder:text-neutral-400",
+        )}
       />
       {canRemove && (
         <Button
@@ -106,8 +110,7 @@ function SortableBringItem({
 export function WhatToBringSectionCard({
   data,
   onChange,
-  onRemove,
-  dragHandleProps,
+  isDark,
 }: WhatToBringSectionCardProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -145,58 +148,41 @@ export function WhatToBringSectionCard({
   };
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-        <div className="flex items-center gap-2">
-          {dragHandleProps && (
-            <SectionDragHandle dragHandleProps={dragHandleProps} />
-          )}
-          <Backpack className="h-5 w-5 text-muted-foreground" />
-          <CardTitle className="text-lg">What To Bring</CardTitle>
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onRemove}
-          className="h-8 text-muted-foreground hover:text-destructive"
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={itemIds}
-            strategy={verticalListSortingStrategy}
-          >
-            {data.items.map((item, i) => (
-              <SortableBringItem
-                key={itemIds[i]}
-                id={itemIds[i]}
-                value={item.item}
-                index={i}
-                canRemove={data.items.length > 1}
-                onUpdate={updateItem}
-                onRemove={removeItem}
-              />
-            ))}
-          </SortableContext>
-        </DndContext>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={addItem}
-          className="w-full gap-1"
-        >
-          <Plus className="h-4 w-4" />
-          Add Item
-        </Button>
-      </CardContent>
-    </Card>
+    <div className="space-y-3">
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
+          {data.items.map((item, i) => (
+            <SortableBringItem
+              key={itemIds[i]}
+              id={itemIds[i]}
+              value={item.item}
+              index={i}
+              canRemove={data.items.length > 1}
+              onUpdate={updateItem}
+              onRemove={removeItem}
+              isDark={isDark}
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={addItem}
+        className={cn(
+          "w-full gap-1",
+          isDark &&
+            "border-neutral-600 text-neutral-300 hover:bg-neutral-700 hover:text-white",
+        )}
+      >
+        <Plus className="h-4 w-4" />
+        Add Item
+      </Button>
+    </div>
   );
 }

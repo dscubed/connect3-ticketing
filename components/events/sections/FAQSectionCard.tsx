@@ -1,12 +1,11 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { HelpCircle, Plus, Trash2, GripVertical } from "lucide-react";
-import type { FAQSectionData, FAQItem, DragHandleProps } from "./types";
-import { SectionDragHandle } from "./SectionDragHandle";
+import { Plus, Trash2, GripVertical } from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { FAQSectionData, FAQItem } from "./types";
 import {
   DndContext,
   closestCenter,
@@ -29,10 +28,10 @@ import { useMemo } from "react";
 interface FAQSectionCardProps {
   data: FAQSectionData;
   onChange: (data: FAQSectionData) => void;
-  onRemove: () => void;
-  dragHandleProps?: DragHandleProps;
   /** Show a pinging blue dot on the Add Question button */
   showAttentionBadge?: boolean;
+  /** Apply dark-mode surface colours */
+  isDark?: boolean;
 }
 
 /* ── Sortable FAQ row ── */
@@ -43,6 +42,7 @@ function SortableFAQItem({
   canRemove,
   onUpdate,
   onRemove,
+  isDark,
 }: {
   id: string;
   item: FAQItem;
@@ -50,6 +50,7 @@ function SortableFAQItem({
   canRemove: boolean;
   onUpdate: (index: number, partial: Partial<FAQItem>) => void;
   onRemove: (index: number) => void;
+  isDark?: boolean;
 }) {
   const {
     attributes,
@@ -88,14 +89,22 @@ function SortableFAQItem({
           placeholder="Question"
           value={item.question}
           onChange={(e) => onUpdate(index, { question: e.target.value })}
-          className="h-9 font-medium"
+          className={cn(
+            "h-9 font-medium",
+            isDark &&
+              "border-neutral-600 bg-neutral-700 text-neutral-100 placeholder:text-neutral-400",
+          )}
         />
         <Textarea
           placeholder="Answer"
           value={item.answer}
           onChange={(e) => onUpdate(index, { answer: e.target.value })}
           rows={2}
-          className="resize-none text-sm"
+          className={cn(
+            "resize-none text-sm",
+            isDark &&
+              "border-neutral-600 bg-neutral-700 text-neutral-100 placeholder:text-neutral-400",
+          )}
         />
       </div>
       {canRemove && (
@@ -115,9 +124,8 @@ function SortableFAQItem({
 export function FAQSectionCard({
   data,
   onChange,
-  onRemove,
-  dragHandleProps,
   showAttentionBadge,
+  isDark,
 }: FAQSectionCardProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -155,68 +163,51 @@ export function FAQSectionCard({
   };
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <div className="flex items-center gap-2">
-          {dragHandleProps && (
-            <SectionDragHandle dragHandleProps={dragHandleProps} />
-          )}
-          <HelpCircle className="h-5 w-5 text-muted-foreground" />
-          <CardTitle className="text-lg">FAQ</CardTitle>
-        </div>
+    <div>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
+          <div className="divide-y">
+            {data.items.map((item, i) => (
+              <SortableFAQItem
+                key={itemIds[i]}
+                id={itemIds[i]}
+                item={item}
+                index={i}
+                canRemove={data.items.length > 1}
+                onUpdate={updateItem}
+                onRemove={removeItem}
+                isDark={isDark}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
+      <div className="relative">
+        {showAttentionBadge && (
+          <span className="absolute -right-1 -top-1 z-10 flex h-2.5 w-2.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-blue-500" />
+          </span>
+        )}
         <Button
-          variant="ghost"
+          type="button"
+          variant="outline"
           size="sm"
-          onClick={onRemove}
-          className="h-8 text-muted-foreground hover:text-destructive"
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </CardHeader>
-      <CardContent className="space-y-0">
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={itemIds}
-            strategy={verticalListSortingStrategy}
-          >
-            <div className="divide-y">
-              {data.items.map((item, i) => (
-                <SortableFAQItem
-                  key={itemIds[i]}
-                  id={itemIds[i]}
-                  item={item}
-                  index={i}
-                  canRemove={data.items.length > 1}
-                  onUpdate={updateItem}
-                  onRemove={removeItem}
-                />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
-        <div className="relative">
-          {showAttentionBadge && (
-            <span className="absolute -right-1 -top-1 z-10 flex h-2.5 w-2.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />
-              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-blue-500" />
-            </span>
+          onClick={addItem}
+          className={cn(
+            "w-full gap-1",
+            isDark &&
+              "border-neutral-600 text-neutral-300 hover:bg-neutral-700 hover:text-white",
           )}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={addItem}
-            className="w-full gap-1"
-          >
-            <Plus className="h-4 w-4" />
-            Add Question
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+        >
+          <Plus className="h-4 w-4" />
+          Add Question
+        </Button>
+      </div>
+    </div>
   );
 }

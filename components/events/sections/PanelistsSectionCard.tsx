@@ -1,12 +1,11 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Mic, Plus, Trash2, ImagePlus, GripVertical } from "lucide-react";
+import { Plus, Trash2, ImagePlus, GripVertical } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import type { PanelistsSectionData, Panelist, DragHandleProps } from "./types";
-import { SectionDragHandle } from "./SectionDragHandle";
+import { cn } from "@/lib/utils";
+import type { PanelistsSectionData, Panelist } from "./types";
 import { useRef, useMemo } from "react";
 import {
   DndContext,
@@ -29,8 +28,7 @@ import { CSS } from "@dnd-kit/utilities";
 interface PanelistsSectionCardProps {
   data: PanelistsSectionData;
   onChange: (data: PanelistsSectionData) => void;
-  onRemove: () => void;
-  dragHandleProps?: DragHandleProps;
+  isDark?: boolean;
 }
 
 /* ── Sortable Panelist row ── */
@@ -42,6 +40,7 @@ function SortablePanelistItem({
   onUpdate,
   onRemove,
   onImageUpload,
+  isDark,
 }: {
   id: string;
   item: Panelist;
@@ -50,6 +49,7 @@ function SortablePanelistItem({
   onUpdate: (index: number, partial: Partial<Panelist>) => void;
   onRemove: (index: number) => void;
   onImageUpload: (index: number, file: File) => void;
+  isDark?: boolean;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const {
@@ -73,7 +73,10 @@ function SortablePanelistItem({
     <div
       ref={setNodeRef}
       style={style}
-      className="group flex items-center gap-3 rounded-lg border p-3"
+      className={cn(
+        "group flex items-center gap-3 rounded-lg border p-3",
+        isDark && "border-neutral-600 bg-neutral-700",
+      )}
     >
       <button
         type="button"
@@ -95,8 +98,15 @@ function SortablePanelistItem({
           {item.imageUrl ? (
             <AvatarImage src={item.imageUrl} alt={item.name} />
           ) : null}
-          <AvatarFallback className="bg-muted">
-            <ImagePlus className="h-5 w-5 text-muted-foreground" />
+          <AvatarFallback
+            className={cn("bg-muted", isDark && "bg-neutral-600")}
+          >
+            <ImagePlus
+              className={cn(
+                "h-5 w-5 text-muted-foreground",
+                isDark && "text-neutral-400",
+              )}
+            />
           </AvatarFallback>
         </Avatar>
         <input
@@ -117,13 +127,21 @@ function SortablePanelistItem({
           placeholder="Name"
           value={item.name}
           onChange={(e) => onUpdate(index, { name: e.target.value })}
-          className="h-8 text-sm font-medium"
+          className={cn(
+            "h-8 text-sm font-medium",
+            isDark &&
+              "border-neutral-600 bg-neutral-700 text-neutral-100 placeholder:text-neutral-400",
+          )}
         />
         <Input
           placeholder="Title / Role"
           value={item.title}
           onChange={(e) => onUpdate(index, { title: e.target.value })}
-          className="h-8 text-sm"
+          className={cn(
+            "h-8 text-sm",
+            isDark &&
+              "border-neutral-600 bg-neutral-700 text-neutral-100 placeholder:text-neutral-400",
+          )}
         />
       </div>
 
@@ -144,8 +162,7 @@ function SortablePanelistItem({
 export function PanelistsSectionCard({
   data,
   onChange,
-  onRemove,
-  dragHandleProps,
+  isDark,
 }: PanelistsSectionCardProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -191,59 +208,42 @@ export function PanelistsSectionCard({
   };
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-        <div className="flex items-center gap-2">
-          {dragHandleProps && (
-            <SectionDragHandle dragHandleProps={dragHandleProps} />
-          )}
-          <Mic className="h-5 w-5 text-muted-foreground" />
-          <CardTitle className="text-lg">Panelists / Lineup</CardTitle>
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onRemove}
-          className="h-8 text-muted-foreground hover:text-destructive"
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={itemIds}
-            strategy={verticalListSortingStrategy}
-          >
-            {data.items.map((item, i) => (
-              <SortablePanelistItem
-                key={itemIds[i]}
-                id={itemIds[i]}
-                item={item}
-                index={i}
-                canRemove={data.items.length > 1}
-                onUpdate={updateItem}
-                onRemove={removeItem}
-                onImageUpload={handleImageUpload}
-              />
-            ))}
-          </SortableContext>
-        </DndContext>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={addItem}
-          className="w-full gap-1"
-        >
-          <Plus className="h-4 w-4" />
-          Add Panelist
-        </Button>
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
+          {data.items.map((item, i) => (
+            <SortablePanelistItem
+              key={itemIds[i]}
+              id={itemIds[i]}
+              item={item}
+              index={i}
+              canRemove={data.items.length > 1}
+              onUpdate={updateItem}
+              onRemove={removeItem}
+              onImageUpload={handleImageUpload}
+              isDark={isDark}
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={addItem}
+        className={cn(
+          "w-full gap-1",
+          isDark &&
+            "border-neutral-600 text-neutral-300 hover:bg-neutral-700 hover:text-white",
+        )}
+      >
+        <Plus className="h-4 w-4" />
+        Add Panelist
+      </Button>
+    </div>
   );
 }
