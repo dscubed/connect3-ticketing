@@ -1,4 +1,5 @@
 export { ImagePreview } from "./ImagePreview";
+export { ImageCarouselPreview } from "./ImageCarouselPreview";
 export { CategoryDisplay } from "./CategoryDisplay";
 export { TagsDisplay } from "./TagsDisplay";
 export { DateDisplay } from "./DateDisplay";

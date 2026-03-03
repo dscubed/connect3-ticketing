@@ -53,6 +53,13 @@ export interface HostsValue {
   data: ClubProfile[];
 }
 
+/** An image in the event photo carousel. */
+export interface CarouselImage {
+  id: string;
+  file: File | null; // null for pre-existing server images
+  preview: string; // blob URL or server URL
+}
+
 export interface EventFormData {
   name: string;
   description: string;
@@ -66,7 +73,7 @@ export interface EventFormData {
   category: string;
   tags: string[];
   hostIds: string[];
-  thumbnailFile: File | null;
+  imageFiles: File[];
   /** Ticket pricing tiers — empty array means "Free". */
   pricing: TicketTier[];
 }

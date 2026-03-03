@@ -1,4 +1,6 @@
 export { ImageUpload } from "./ImageUpload";
+export { ImageCarousel } from "./ImageCarousel";
+export { ImageManagerDialog } from "./ImageManagerDialog";
 export { CategoryPicker } from "./CategoryPicker";
 export { TagsPicker } from "./TagsPicker";
 export { DatePicker } from "./DatePicker";

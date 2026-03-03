@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -15,10 +15,12 @@ import type {
   LocationData,
   ClubProfile,
   EventFormData,
+  CarouselImage,
 } from "./shared/types";
 
 /* ── Create-mode components ── */
-import { ImageUpload } from "./create/ImageUpload";
+import { ImageCarousel } from "./create/ImageCarousel";
+import { ImageManagerDialog } from "./create/ImageManagerDialog";
 import { DatePicker } from "./create/DatePicker";
 import { LocationPicker } from "./create/LocationPicker";
 import { HostsPicker } from "./create/HostsPicker";
@@ -28,7 +30,7 @@ import { PricingPicker } from "./create/PricingPicker";
 
 /* ── Preview-mode components ── */
 import {
-  ImagePreview,
+  ImageCarouselPreview,
   CategoryDisplay,
   TagsDisplay,
   DateDisplay,
@@ -84,8 +86,8 @@ import { CSS } from "@dnd-kit/utilities";
 interface EventFormProps {
   /** Pre-filled data for edit mode */
   initialData?: Partial<EventFormData>;
-  /** Existing thumbnail URL (edit mode) */
-  existingThumbnail?: string | null;
+  /** Existing image URLs (edit mode) */
+  existingImages?: string[];
   /** Form mode */
   mode?: "create" | "edit";
   /** Called on form submit */
@@ -130,7 +132,7 @@ function SortableSectionWrapper({
 
 export default function EventForm({
   initialData,
-  existingThumbnail,
+  existingImages,
   mode = "create",
 }: EventFormProps) {
   const router = useRouter();
@@ -173,7 +175,7 @@ export default function EventForm({
     category: initialData?.category ?? "",
     tags: initialData?.tags ?? [],
     hostIds: initialData?.hostIds ?? [],
-    thumbnailFile: null,
+    imageFiles: initialData?.imageFiles ?? [],
     pricing: initialData?.pricing ?? [],
   });
 
@@ -183,8 +185,34 @@ export default function EventForm({
   // Dynamic section cards
   const [sections, setSections] = useState<SectionData[]>([]);
 
+  /* ── Carousel images (lifted state — persists across preview/edit toggle) ── */
+  const [carouselImages, setCarouselImages] = useState<CarouselImage[]>(() =>
+    (existingImages ?? []).map((url, i) => ({
+      id: `existing-${i}`,
+      file: null,
+      preview: url,
+    })),
+  );
+  const [managerOpen, setManagerOpen] = useState(false);
+
+  /* Sync form.imageFiles whenever carouselImages changes */
+  useEffect(() => {
+    const files = carouselImages.filter((i) => i.file).map((i) => i.file!);
+    setForm((prev) => ({ ...prev, imageFiles: files }));
+  }, [carouselImages]);
+
+  /* Derive preview URLs from carousel state */
+  const imagePreviewUrls = useMemo(
+    () => carouselImages.map((i) => i.preview),
+    [carouselImages],
+  );
+
+  const handleManagerConfirm = useCallback((updated: CarouselImage[]) => {
+    setCarouselImages(updated);
+  }, []);
+
   /* ── Attention badge helpers ── */
-  const needsThumbnail = !form.thumbnailFile && !existingThumbnail;
+  const needsThumbnail = carouselImages.length === 0 && !existingImages?.length;
   const needsStartDate = !form.startDate;
   const needsLocation = !form.location.displayName;
   const needsCategory = !form.category;
@@ -321,11 +349,6 @@ export default function EventForm({
     }
   };
 
-  /* ── Thumbnail preview URL ── */
-  const thumbnailUrl = form.thumbnailFile
-    ? URL.createObjectURL(form.thumbnailFile)
-    : existingThumbnail;
-
   return (
     <div className="min-h-screen bg-background pb-12">
       {/* Top bar */}
@@ -379,12 +402,14 @@ export default function EventForm({
         /* ═══════════════ PREVIEW MODE ═══════════════ */
         <div className="mx-auto max-w-4xl px-6 py-8">
           <div className="space-y-6">
-            {/* Thumbnail */}
-            <div className="flex justify-center">
-              <div className="w-2/5">
-                <ImagePreview value={thumbnailUrl ?? null} />
-              </div>
-            </div>
+            {/* Photos carousel */}
+            <ImageCarouselPreview
+              value={
+                imagePreviewUrls.length > 0
+                  ? imagePreviewUrls
+                  : (existingImages ?? [])
+              }
+            />
 
             {/* Event name */}
             <h1 className="text-4xl font-bold tracking-tight">
@@ -430,15 +455,13 @@ export default function EventForm({
         <div className="mx-auto max-w-4xl px-6 py-8">
           {/* ── Hero Section ── */}
           <div className="space-y-6">
-            {/* Thumbnail (1:1, half width, centred) */}
-            <div className="flex justify-center">
-              <div ref={thumbnailRef} className="relative w-full sm:w-2/5">
-                <AttentionBadge show={needsThumbnail} />
-                <ImageUpload
-                  currentImage={existingThumbnail}
-                  onChange={(file) => updateField("thumbnailFile", file)}
-                />
-              </div>
+            {/* Photo carousel (responsive: 1→3→5 visible) */}
+            <div ref={thumbnailRef} className="relative w-full">
+              <ImageCarousel
+                images={carouselImages}
+                onEditClick={() => setManagerOpen(true)}
+                showAttentionBadge={needsThumbnail}
+              />
             </div>
 
             {/* Event Name */}
@@ -582,12 +605,20 @@ export default function EventForm({
         </div>
       )}
 
+      {/* Image manager dialog */}
+      <ImageManagerDialog
+        open={managerOpen}
+        onOpenChange={setManagerOpen}
+        images={carouselImages}
+        onConfirm={handleManagerConfirm}
+      />
+
       {/* Floating checklist (edit mode only) */}
       {!previewMode && (
         <EventChecklist
           form={form}
           sections={sections}
-          hasExistingThumbnail={!!existingThumbnail}
+          hasExistingThumbnail={carouselImages.length > 0}
           elementRefs={checklistRefs}
           dismissed={dismissed}
           onDismissChange={setDismissed}
