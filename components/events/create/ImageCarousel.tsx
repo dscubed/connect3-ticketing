@@ -19,7 +19,6 @@ import { AttentionBadge } from "../EventChecklist";
 interface ImageCarouselProps {
   images: CarouselImage[];
   onEditClick: () => void;
-  showAttentionBadge?: boolean;
 }
 
 /** Track how many items are visible (1 on mobile, 3 on md+). */
@@ -35,11 +34,7 @@ function useVisibleCount() {
   return visible;
 }
 
-export function ImageCarousel({
-  images,
-  onEditClick,
-  showAttentionBadge,
-}: ImageCarouselProps) {
+export function ImageCarousel({ images, onEditClick }: ImageCarouselProps) {
   const [api, setApi] = useState<CarouselApi>();
   const [current, setCurrent] = useState(0);
   const count = images.length;
@@ -62,7 +57,7 @@ export function ImageCarousel({
   if (images.length === 0) {
     return (
       <div className="relative mx-auto w-1/3 rounded-xl border border-dashed border-border bg-muted/30">
-        <AttentionBadge show={!!showAttentionBadge} />
+        <AttentionBadge show />
         <button
           type="button"
           onClick={onEditClick}

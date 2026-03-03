@@ -226,7 +226,6 @@ export default function EventForm({
   }, []);
 
   /* ── Attention badge helpers ── */
-  const needsThumbnail = carouselImages.length === 0 && !existingImages?.length;
   const needsStartDate = !form.startDate;
   const needsLocation = !form.location.displayName;
   const needsCategory = !form.category;
@@ -329,14 +328,19 @@ export default function EventForm({
     </div>
   );
 
+  /* Solid bg color — only honoured in card layout */
+  const solidBg =
+    theme.layout === "card" && theme.bgColor ? theme.bgColor : undefined;
+
   return (
     <div
       className={cn("min-h-screen pb-12", pageBgClass, colors.isDark && "dark")}
+      style={solidBg ? { backgroundColor: solidBg } : undefined}
     >
       {/* Toolbar */}
       <div
         className={cn(
-          "sticky top-14 z-40 border-b transition-all",
+          "sticky top-14 z-40 border-b transition-all shadow-lg",
           isDark
             ? "border-neutral-700/60 bg-neutral-900/60 text-neutral-100 backdrop-blur-xl"
             : "bg-background/95 backdrop-blur",
@@ -403,7 +407,6 @@ export default function EventForm({
           {/* Hero Section */}
           <div className="space-y-6">
             <div ref={thumbnailRef} className="relative w-full">
-              {isEditing && <AttentionBadge show={needsThumbnail} />}
               <EventImageField
                 mode={viewMode}
                 images={carouselImages}

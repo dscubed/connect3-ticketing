@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/popover";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
-import { PlusCircle, Search, Loader2, X } from "lucide-react";
+import { PlusCircle, Search, Loader2, X, UserPlus } from "lucide-react";
 import { HostAvatarStack } from "../shared/HostAvatarStack";
 import type { ClubProfile, EditInputProps, HostsValue } from "../shared/types";
 
@@ -177,7 +177,7 @@ export function HostsPicker({
           >
             {/* Creator pinned at very top */}
             <div className="flex w-full items-center gap-2 px-3 py-1.5 text-sm opacity-60">
-              <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-primary bg-primary text-primary-foreground">
+              <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-primary bg-primary text-primary-foreground">
                 <svg width="10" height="10" viewBox="0 0 10 10">
                   <path
                     d="M2 5l2 2 4-4"
@@ -214,7 +214,7 @@ export function HostsPicker({
                 onClick={() => toggleClub(club)}
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-muted"
               >
-                <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-primary bg-primary text-primary-foreground">
+                <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-primary bg-primary text-primary-foreground">
                   <svg width="10" height="10" viewBox="0 0 10 10">
                     <path
                       d="M2 5l2 2 4-4"
@@ -235,6 +235,49 @@ export function HostsPicker({
                 <span className="truncate font-medium">{club.first_name}</span>
               </button>
             ))}
+            {/* Custom host creation — when search has text and no exact match */}
+            {search.trim().length > 0 &&
+              !loading &&
+              (() => {
+                const trimmed = search.trim();
+                const alreadyExists =
+                  clubs.some(
+                    (c) => c.first_name.toLowerCase() === trimmed.toLowerCase(),
+                  ) ||
+                  selectedHostsData.some(
+                    (c) => c.first_name.toLowerCase() === trimmed.toLowerCase(),
+                  ) ||
+                  creatorProfile.first_name.toLowerCase() ===
+                    trimmed.toLowerCase();
+                if (alreadyExists) return null;
+                return (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const customClub: ClubProfile = {
+                          id: `custom-${Date.now()}`,
+                          first_name: trimmed,
+                          avatar_url: null,
+                        };
+                        onChange({
+                          ids: [...selectedHosts, customClub.id],
+                          data: [...selectedHostsData, customClub],
+                        });
+                        setSearch("");
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-muted"
+                    >
+                      <UserPlus className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="truncate">
+                        Add &ldquo;
+                        <span className="font-medium">{trimmed}</span>&rdquo; as
+                        host
+                      </span>
+                    </button>
+                  </>
+                );
+              })()}
 
             {(selectedHostsData.length > 0 || true) &&
               clubs.some(
@@ -256,7 +299,7 @@ export function HostsPicker({
                   onClick={() => toggleClub(club)}
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-muted"
                 >
-                  <div className="h-4 w-4 rounded-sm border border-muted-foreground/30" />
+                  <div className="h-4 w-4 shrink-0 rounded-sm border border-muted-foreground/30" />
                   <Avatar className="h-5 w-5">
                     {club.avatar_url && (
                       <AvatarImage
@@ -278,7 +321,7 @@ export function HostsPicker({
               </div>
             )}
 
-            {!loading && clubs.length === 0 && (
+            {!loading && clubs.length === 0 && !search && (
               <div className="px-3 py-4 text-center text-sm text-muted-foreground">
                 No clubs found
               </div>

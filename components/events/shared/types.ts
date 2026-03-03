@@ -79,6 +79,8 @@ export interface EventTheme {
   accent: ThemeAccent;
   /** Hex colour used when accent === "custom" */
   accentCustom?: string;
+  /** Solid background colour (card layout only). */
+  bgColor?: string;
 }
 
 export const DEFAULT_THEME: EventTheme = {

@@ -16,6 +16,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Sun,
   Moon,
@@ -151,7 +152,15 @@ export function ThemeDialog({
                         ? "border-primary bg-primary/5"
                         : "border-border hover:border-muted-foreground/40",
                     )}
-                    onClick={() => applyLive({ ...theme, layout: opt.value })}
+                    onClick={() =>
+                      applyLive({
+                        ...theme,
+                        layout: opt.value,
+                        ...(opt.value === "classic"
+                          ? { bgColor: undefined }
+                          : {}),
+                      })
+                    }
                   >
                     {/* Mini preview */}
                     {opt.value === "card" ? (
@@ -173,29 +182,245 @@ export function ThemeDialog({
 
           <Separator />
 
-          {/* ── Background Accent ── */}
+          {/* ── Background ── */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Background Accent</Label>
-            <p className="text-xs text-muted-foreground">
-              Adds a subtle gradient tint to the top of the page background.
-            </p>
-            <div className="flex gap-2 pt-1">
-              {ACCENT_OPTIONS.map((opt) => {
-                const isActive = theme.accent === opt.value;
-                return opt.value === "custom" ? (
-                  <Popover key={opt.value}>
-                    <PopoverTrigger asChild>
+            <Label className="text-sm font-medium">Background</Label>
+            <Tabs defaultValue="accent" className="gap-1">
+              <TabsList className="h-8 w-full">
+                <TabsTrigger value="accent" className="text-xs">
+                  Gradient Accent
+                </TabsTrigger>
+                <span
+                  title={
+                    theme.layout !== "card"
+                      ? "Only available with Card layout — cards keep text readable on any background."
+                      : undefined
+                  }
+                  className="flex flex-1"
+                >
+                  <TabsTrigger
+                    value="solid"
+                    className="text-xs w-full"
+                    disabled={theme.layout !== "card"}
+                  >
+                    Solid Color
+                  </TabsTrigger>
+                </span>
+              </TabsList>
+
+              {/* ── Accent tab ── */}
+              <TabsContent value="accent" className="pt-1">
+                <p className="text-xs text-muted-foreground mb-2">
+                  Adds a subtle gradient tint to the top of the page.
+                </p>
+                <div className="flex gap-2">
+                  {ACCENT_OPTIONS.map((opt) => {
+                    const isActive = theme.accent === opt.value;
+                    return opt.value === "custom" ? (
+                      <Popover key={opt.value}>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            title={opt.label}
+                            className={cn(
+                              "relative flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all",
+                              isActive
+                                ? "border-transparent scale-110"
+                                : "border-border hover:border-muted-foreground/50",
+                            )}
+                            style={
+                              isActive
+                                ? {
+                                    backgroundImage:
+                                      "linear-gradient(white, white), linear-gradient(135deg, #f472b6, #a855f7, #06b6d4, #22c55e, #eab308)",
+                                    backgroundOrigin: "border-box",
+                                    backgroundClip: "padding-box, border-box",
+                                  }
+                                : undefined
+                            }
+                            onClick={() =>
+                              applyLive({
+                                ...theme,
+                                accent: "custom",
+                                ...(!theme.accentCustom
+                                  ? { accentCustom: "#6366f1" }
+                                  : {}),
+                              })
+                            }
+                          >
+                            {theme.accent === "custom" && theme.accentCustom ? (
+                              <span
+                                className="h-5 w-5 rounded-full border"
+                                style={{ backgroundColor: theme.accentCustom }}
+                              />
+                            ) : (
+                              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-linear-to-br from-pink-400 via-purple-400 to-cyan-400">
+                                <Pipette className="h-3 w-3 text-white" />
+                              </span>
+                            )}
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          side="right"
+                          align="start"
+                          className="w-auto space-y-3 p-3"
+                        >
+                          <HexColorPicker
+                            color={theme.accentCustom || "#6366f1"}
+                            onChange={(color) =>
+                              applyLive({
+                                ...theme,
+                                accent: "custom",
+                                accentCustom: color,
+                              })
+                            }
+                            style={{ width: 200, height: 160 }}
+                          />
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="h-7 w-7 shrink-0 rounded-md border"
+                              style={{
+                                backgroundColor:
+                                  theme.accentCustom || "#6366f1",
+                              }}
+                            />
+                            <input
+                              type="text"
+                              maxLength={7}
+                              value={theme.accentCustom || "#6366f1"}
+                              onChange={(e) => {
+                                const v = e.currentTarget.value;
+                                applyLive({
+                                  ...theme,
+                                  accent: "custom",
+                                  accentCustom: v,
+                                });
+                              }}
+                              className="h-8 w-full rounded-md border bg-transparent px-2 text-sm font-mono"
+                            />
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    ) : (
                       <button
+                        key={opt.value}
                         type="button"
                         title={opt.label}
                         className={cn(
-                          "relative flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all",
+                          "flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all",
                           isActive
+                            ? "border-primary scale-110"
+                            : "border-border hover:border-muted-foreground/50",
+                        )}
+                        onClick={() =>
+                          applyLive({
+                            ...theme,
+                            accent: opt.value,
+                          })
+                        }
+                      >
+                        {opt.value === "none" ? (
+                          <Ban className="h-4 w-4 text-red-400" />
+                        ) : (
+                          <span
+                            className={cn("h-5 w-5 rounded-full", opt.swatch)}
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </TabsContent>
+
+              {/* ── Solid Color tab ── */}
+              <TabsContent value="solid" className="pt-1">
+                <p className="text-xs text-muted-foreground mb-2">
+                  Sets a solid background color for the page. Cards keep text
+                  readable.
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    title="No color"
+                    className={cn(
+                      "flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all",
+                      !theme.bgColor
+                        ? "border-primary scale-110"
+                        : "border-border hover:border-muted-foreground/50",
+                    )}
+                    onClick={() => applyLive({ ...theme, bgColor: undefined })}
+                  >
+                    <Ban className="h-4 w-4 text-red-400" />
+                  </button>
+                  {[
+                    { hex: "#fef3c7", label: "Cream" },
+                    { hex: "#dbeafe", label: "Sky" },
+                    { hex: "#ede9fe", label: "Lavender" },
+                    { hex: "#fce7f3", label: "Rose" },
+                    { hex: "#d1fae5", label: "Mint" },
+                    { hex: "#fed7aa", label: "Peach" },
+                    { hex: "#1e1b4b", label: "Indigo" },
+                    { hex: "#172554", label: "Navy" },
+                    { hex: "#1a2e05", label: "Forest" },
+                    { hex: "#44403c", label: "Stone" },
+                  ].map((preset) => (
+                    <button
+                      key={preset.hex}
+                      type="button"
+                      title={preset.label}
+                      className={cn(
+                        "flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all",
+                        theme.bgColor === preset.hex
+                          ? "border-primary scale-110"
+                          : "border-border hover:border-muted-foreground/50",
+                      )}
+                      onClick={() =>
+                        applyLive({ ...theme, bgColor: preset.hex })
+                      }
+                    >
+                      <span
+                        className="h-5 w-5 rounded-full"
+                        style={{ backgroundColor: preset.hex }}
+                      />
+                    </button>
+                  ))}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        title="Custom color"
+                        className={cn(
+                          "relative flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all",
+                          theme.bgColor &&
+                            ![
+                              "#fef3c7",
+                              "#dbeafe",
+                              "#ede9fe",
+                              "#fce7f3",
+                              "#d1fae5",
+                              "#fed7aa",
+                              "#1e1b4b",
+                              "#172554",
+                              "#1a2e05",
+                              "#44403c",
+                            ].includes(theme.bgColor)
                             ? "border-transparent scale-110"
                             : "border-border hover:border-muted-foreground/50",
                         )}
                         style={
-                          isActive
+                          theme.bgColor &&
+                          ![
+                            "#fef3c7",
+                            "#dbeafe",
+                            "#ede9fe",
+                            "#fce7f3",
+                            "#d1fae5",
+                            "#fed7aa",
+                            "#1e1b4b",
+                            "#172554",
+                            "#1a2e05",
+                            "#44403c",
+                          ].includes(theme.bgColor)
                             ? {
                                 backgroundImage:
                                   "linear-gradient(white, white), linear-gradient(135deg, #f472b6, #a855f7, #06b6d4, #22c55e, #eab308)",
@@ -204,26 +429,10 @@ export function ThemeDialog({
                               }
                             : undefined
                         }
-                        onClick={() =>
-                          applyLive({
-                            ...theme,
-                            accent: "custom",
-                            ...(!theme.accentCustom
-                              ? { accentCustom: "#6366f1" }
-                              : {}),
-                          })
-                        }
                       >
-                        {theme.accent === "custom" && theme.accentCustom ? (
-                          <span
-                            className="h-5 w-5 rounded-full border"
-                            style={{ backgroundColor: theme.accentCustom }}
-                          />
-                        ) : (
-                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-linear-to-br from-pink-400 via-purple-400 to-cyan-400">
-                            <Pipette className="h-3 w-3 text-white" />
-                          </span>
-                        )}
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-linear-to-br from-pink-400 via-purple-400 to-cyan-400">
+                          <Pipette className="h-3 w-3 text-white" />
+                        </span>
                       </button>
                     </PopoverTrigger>
                     <PopoverContent
@@ -232,13 +441,9 @@ export function ThemeDialog({
                       className="w-auto space-y-3 p-3"
                     >
                       <HexColorPicker
-                        color={theme.accentCustom || "#6366f1"}
+                        color={theme.bgColor || "#6366f1"}
                         onChange={(color) =>
-                          applyLive({
-                            ...theme,
-                            accent: "custom",
-                            accentCustom: color,
-                          })
+                          applyLive({ ...theme, bgColor: color })
                         }
                         style={{ width: 200, height: 160 }}
                       />
@@ -246,55 +451,25 @@ export function ThemeDialog({
                         <div
                           className="h-7 w-7 shrink-0 rounded-md border"
                           style={{
-                            backgroundColor: theme.accentCustom || "#6366f1",
+                            backgroundColor: theme.bgColor || "#6366f1",
                           }}
                         />
                         <input
                           type="text"
                           maxLength={7}
-                          value={theme.accentCustom || "#6366f1"}
+                          value={theme.bgColor || "#6366f1"}
                           onChange={(e) => {
                             const v = e.currentTarget.value;
-                            applyLive({
-                              ...theme,
-                              accent: "custom",
-                              accentCustom: v,
-                            });
+                            applyLive({ ...theme, bgColor: v });
                           }}
                           className="h-8 w-full rounded-md border bg-transparent px-2 text-sm font-mono"
                         />
                       </div>
                     </PopoverContent>
                   </Popover>
-                ) : (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    title={opt.label}
-                    className={cn(
-                      "flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all",
-                      isActive
-                        ? "border-primary scale-110"
-                        : "border-border hover:border-muted-foreground/50",
-                    )}
-                    onClick={() =>
-                      applyLive({
-                        ...theme,
-                        accent: opt.value,
-                      })
-                    }
-                  >
-                    {opt.value === "none" ? (
-                      <Ban className="h-4 w-4 text-red-400" />
-                    ) : (
-                      <span
-                        className={cn("h-5 w-5 rounded-full", opt.swatch)}
-                      />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+                </div>
+              </TabsContent>
+            </Tabs>
           </div>
         </div>
 
