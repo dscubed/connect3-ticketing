@@ -2,15 +2,8 @@
 
 import { useState, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { ImagePlus, Plus, Star, Trash2 } from "lucide-react";
+import { ResponsiveModal } from "@/components/ui/responsive-modal";
+import { GripVertical, ImagePlus, Plus, Star, Trash2 } from "lucide-react";
 import ImageCropper from "@/components/ui/ImageCropper";
 import Image from "next/image";
 import {
@@ -25,11 +18,13 @@ import {
 import {
   SortableContext,
   rectSortingStrategy,
+  verticalListSortingStrategy,
   useSortable,
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { CarouselImage } from "../shared/types";
+import { useIsMobile } from "@/lib/hooks/useIsMobile";
 
 /*  Helpers  */
 let _idSeq = 0;
@@ -55,6 +50,8 @@ function SortableGridItem({
     transition,
     isDragging,
   } = useSortable({ id: image.id });
+
+  const isMobile = useIsMobile();
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -89,7 +86,7 @@ function SortableGridItem({
       {index === 0 && (
         <span className="absolute left-1.5 top-1.5 flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground shadow">
           <Star className="h-2.5 w-2.5" />
-          Thumbnail
+          {!isMobile && "Thumbnail"}
         </span>
       )}
       {index > 0 && (
@@ -113,6 +110,92 @@ function SortableGridItem({
   );
 }
 
+/*  Sortable list item (mobile)  */
+function SortableListItem({
+  image,
+  index,
+  onRemove,
+  onCropClick,
+}: {
+  image: CarouselImage;
+  index: number;
+  onRemove: () => void;
+  onCropClick: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: image.id });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : undefined,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-3 rounded-lg border bg-muted/40 p-2"
+    >
+      {/* Drag grip */}
+      <div
+        {...attributes}
+        {...listeners}
+        className="flex shrink-0 cursor-grab touch-none items-center text-muted-foreground active:cursor-grabbing"
+      >
+        <GripVertical className="h-5 w-5" />
+      </div>
+
+      {/* Image preview */}
+      <div
+        className="relative h-16 w-16 shrink-0 cursor-pointer overflow-hidden rounded-md"
+        onClick={onCropClick}
+      >
+        <Image
+          src={image.preview}
+          alt={index === 0 ? "Thumbnail" : `Photo ${index + 1}`}
+          fill
+          className="object-cover"
+          draggable={false}
+        />
+      </div>
+
+      {/* Label */}
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        {index === 0 ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-primary-foreground shadow-sm">
+            <Star className="h-3 w-3" />
+            Thumbnail
+          </span>
+        ) : (
+          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-foreground/10 text-xs font-medium">
+            {index + 1}
+          </span>
+        )}
+      </div>
+
+      {/* Delete */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove();
+        }}
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+      >
+        <Trash2 className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
 /*  Main dialog shell  */
 interface ImageManagerDialogProps {
   open: boolean;
@@ -130,18 +213,20 @@ export function ImageManagerDialog({
   maxImages = 10,
 }: ImageManagerDialogProps) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl">
-        {open && (
-          <ImageManagerContent
-            images={images}
-            onConfirm={onConfirm}
-            onOpenChange={onOpenChange}
-            maxImages={maxImages}
-          />
-        )}
-      </DialogContent>
-    </Dialog>
+    <ResponsiveModal
+      open={open}
+      onOpenChange={onOpenChange}
+      className="sm:max-w-4xl"
+    >
+      {open && (
+        <ImageManagerContent
+          images={images}
+          onConfirm={onConfirm}
+          onOpenChange={onOpenChange}
+          maxImages={maxImages}
+        />
+      )}
+    </ResponsiveModal>
   );
 }
 
@@ -173,6 +258,8 @@ function ImageManagerContent({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isCropping = cropTargetIndex !== null && pendingCropSrc !== null;
+
+  const isMobile = useIsMobile();
 
   /*  DnD  */
   const sensors = useSensors(
@@ -297,10 +384,14 @@ function ImageManagerContent({
   if (isCropping) {
     return (
       <>
-        <DialogHeader>
-          <DialogTitle>Edit Photo</DialogTitle>
-          <DialogDescription>Adjust crop, then click Apply</DialogDescription>
-        </DialogHeader>
+        <div className="flex flex-col space-y-1.5 sm:text-left">
+          <h2 className="text-lg font-semibold leading-none tracking-tight">
+            Edit Photo
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Adjust crop, then click Apply
+          </p>
+        </div>
         <div className="mx-auto w-full max-w-sm">
           <ImageCropper
             imageSrc={pendingCropSrc!}
@@ -310,14 +401,14 @@ function ImageManagerContent({
             fileName={`event-photo-${cropTargetIndex! + 1}.png`}
           />
         </div>
-        <DialogFooter className="gap-2 sm:gap-0">
+        <div className="mt-auto flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="outline" onClick={handleCropCancel}>
             Cancel
           </Button>
           <Button onClick={handleCropConfirm} disabled={!croppedFile}>
             Apply
           </Button>
-        </DialogFooter>
+        </div>
       </>
     );
   }
@@ -325,9 +416,11 @@ function ImageManagerContent({
   /*  Grid view  */
   return (
     <>
-      <DialogHeader>
-        <DialogTitle>Manage Photos</DialogTitle>
-      </DialogHeader>
+      <div className="flex flex-col space-y-1.5 sm:text-left">
+        <h2 className="text-lg font-semibold leading-none tracking-tight">
+          Manage Photos
+        </h2>
+      </div>
 
       <div className="max-h-[60vh] overflow-y-auto py-2">
         {localImages.length > 0 ? (
@@ -338,32 +431,64 @@ function ImageManagerContent({
           >
             <SortableContext
               items={localImages.map((i) => i.id)}
-              strategy={rectSortingStrategy}
+              strategy={
+                isMobile ? verticalListSortingStrategy : rectSortingStrategy
+              }
             >
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                {localImages.map((img, i) => (
-                  <SortableGridItem
-                    key={img.id}
-                    image={img}
-                    index={i}
-                    onRemove={() => handleRemove(i)}
-                    onCropClick={() => openCropFor(i)}
-                  />
-                ))}
-                {localImages.length < maxImages && (
-                  <label className="flex aspect-square cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-border text-muted-foreground transition-colors hover:border-primary hover:text-primary">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={handleFileSelect}
-                      className="hidden"
+              {isMobile ? (
+                /* ── Mobile: vertical list ── */
+                <div className="flex flex-col gap-2">
+                  {localImages.map((img, i) => (
+                    <SortableListItem
+                      key={img.id}
+                      image={img}
+                      index={i}
+                      onRemove={() => handleRemove(i)}
+                      onCropClick={() => openCropFor(i)}
                     />
-                    <Plus className="h-6 w-6" />
-                  </label>
-                )}
-              </div>
+                  ))}
+                  {localImages.length < maxImages && (
+                    <label className="flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-border py-4 text-muted-foreground transition-colors hover:border-primary hover:text-primary">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={handleFileSelect}
+                        className="hidden"
+                      />
+                      <Plus className="mr-2 h-5 w-5" />
+                      <span className="text-sm font-medium">Add photo</span>
+                    </label>
+                  )}
+                </div>
+              ) : (
+                /* ── Desktop: grid ── */
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  {localImages.map((img, i) => (
+                    <SortableGridItem
+                      key={img.id}
+                      image={img}
+                      index={i}
+                      onRemove={() => handleRemove(i)}
+                      onCropClick={() => openCropFor(i)}
+                    />
+                  ))}
+                  {localImages.length < maxImages && (
+                    <label className="flex aspect-square cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-border text-muted-foreground transition-colors hover:border-primary hover:text-primary">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={handleFileSelect}
+                        className="hidden"
+                      />
+                      <Plus className="h-6 w-6" />
+                    </label>
+                  )}
+                </div>
+              )}
             </SortableContext>
           </DndContext>
         ) : (
@@ -382,17 +507,17 @@ function ImageManagerContent({
           </label>
         )}
       </div>
-      <DialogDescription className="flex justify-center">
+      <p className="flex justify-center text-sm text-muted-foreground">
         {localImages.length}/{maxImages} photos &middot; Drag to reorder
         &middot; Click a photo to crop
-      </DialogDescription>
+      </p>
 
-      <DialogFooter className="gap-2 sm:gap-0">
+      <div className="mt-auto flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <Button variant="outline" onClick={handleCancel}>
           Cancel
         </Button>
         <Button onClick={handleConfirm}>Done</Button>
-      </DialogFooter>
+      </div>
     </>
   );
 }

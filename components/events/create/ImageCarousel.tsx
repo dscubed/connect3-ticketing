@@ -56,7 +56,7 @@ export function ImageCarousel({ images, onEditClick }: ImageCarouselProps) {
 
   if (images.length === 0) {
     return (
-      <div className="relative mx-auto w-1/3 rounded-xl border border-dashed border-border bg-muted/30">
+      <div className="relative mx-auto w-full sm:w-1/3 rounded-xl border border-dashed border-border bg-muted/30">
         <AttentionBadge show />
         <button
           type="button"

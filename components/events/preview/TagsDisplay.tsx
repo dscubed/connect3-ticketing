@@ -56,7 +56,11 @@ export function TagsDisplay({ value }: TagsDisplayProps) {
         (isMobile ? (
           <>
             {overflowBadge}
-            <ResponsiveModal open={isOpen} onOpenChange={setIsOpen} title="Tags">
+            <ResponsiveModal
+              open={isOpen}
+              onOpenChange={setIsOpen}
+              title="Tags"
+            >
               {allTags}
             </ResponsiveModal>
           </>

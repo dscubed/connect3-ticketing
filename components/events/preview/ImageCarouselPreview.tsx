@@ -51,7 +51,7 @@ export function ImageCarouselPreview({ value }: ImageCarouselPreviewProps) {
 
   if (!value.length) {
     return (
-      <div className="relative mx-auto w-1/3 rounded-xl border border-dashed border-border bg-muted/30">
+      <div className="relative mx-auto w-full sm:w-1/3 rounded-xl border border-dashed border-border bg-muted/30">
         <div className="flex flex-col items-center gap-2 aspect-square justify-center">
           <ImageIcon className="h-10 w-10" />
           <p className="text-sm">No photos added</p>

@@ -42,20 +42,20 @@ export function CategoryPicker({ value, onChange }: CategoryPickerProps) {
       align="start"
     >
       <div className="overflow-y-auto md:max-h-none">
-      {EVENT_CATEGORIES.map((cat) => (
-        <button
-          key={cat}
-          type="button"
-          onClick={() => {
-            onChange(cat);
-            setOpen(false);
-          }}
-          className="flex w-full items-center justify-between rounded-sm px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-muted"
-        >
-          {cat}
-          {value === cat && <Check className="h-3.5 w-3.5 text-primary" />}
-        </button>
-      ))}
+        {EVENT_CATEGORIES.map((cat) => (
+          <button
+            key={cat}
+            type="button"
+            onClick={() => {
+              onChange(cat);
+              setOpen(false);
+            }}
+            className="flex w-full items-center justify-between rounded-sm px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-muted"
+          >
+            {cat}
+            {value === cat && <Check className="h-3.5 w-3.5 text-primary" />}
+          </button>
+        ))}
       </div>
     </ResponsivePopover>
   );

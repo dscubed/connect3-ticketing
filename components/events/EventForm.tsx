@@ -447,7 +447,12 @@ export default function EventForm({
       {/* ── Full-width accent gradient overlay ── */}
       <div style={accentGradient ? { background: accentGradient } : undefined}>
         {/* ── Single unified layout ── */}
-        <div className={cn("mx-auto max-w-4xl px-3 py-6 sm:px-6 sm:py-8", pageTextClass)}>
+        <div
+          className={cn(
+            "mx-auto max-w-4xl px-3 py-6 sm:px-6 sm:py-8",
+            pageTextClass,
+          )}
+        >
           {/* Hero Section */}
           <div className="space-y-6">
             <div ref={thumbnailRef} className="relative w-full">
