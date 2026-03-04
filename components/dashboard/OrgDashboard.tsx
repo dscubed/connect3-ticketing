@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/authStore";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,6 +21,7 @@ import {
   Loader2,
   MapPin,
   Globe,
+  Pencil,
 } from "lucide-react";
 
 interface Event {
@@ -36,6 +38,7 @@ interface Event {
 }
 
 export function OrgDashboard() {
+  const router = useRouter();
   const { user } = useAuthStore();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
@@ -150,15 +153,26 @@ export function OrgDashboard() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-0">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full gap-2"
-                  disabled
-                >
-                  <Ticket className="h-4 w-4" />
-                  Set up Ticketing
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 gap-2"
+                    onClick={() => router.push(`/events/${event.id}/edit`)}
+                  >
+                    <Pencil className="h-4 w-4" />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 gap-2"
+                    disabled
+                  >
+                    <Ticket className="h-4 w-4" />
+                    Ticketing
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ))}

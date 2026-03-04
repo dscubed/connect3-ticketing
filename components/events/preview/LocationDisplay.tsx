@@ -33,7 +33,7 @@ export function LocationDisplay({ value }: LocationDisplayProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   const content = hasValue ? (
-    <div className="flex min-w-0 flex-col gap-0.5 w-full">
+    <div className="flex min-w-0 flex-col gap-0.5 max-w-full">
       <span className="truncate text-sm font-medium sm:text-base">
         {value.displayName}
       </span>

@@ -65,6 +65,8 @@ import {
   Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
+import { createEvent } from "@/lib/api/createEvent";
+import { updateEvent } from "@/lib/api/updateEvent";
 import {
   DndContext,
   closestCenter,
@@ -88,6 +90,14 @@ interface EventFormProps {
   initialData?: Partial<EventFormData>;
   /** Existing image URLs (edit mode) */
   existingImages?: string[];
+  /** Pre-loaded carousel images (edit mode) */
+  initialCarouselImages?: CarouselImage[];
+  /** Pre-loaded host profile objects (edit mode) */
+  initialHostsData?: ClubProfile[];
+  /** Pre-loaded sections (edit mode) */
+  initialSections?: SectionData[];
+  /** Event ID — required for edit mode */
+  eventId?: string;
   /** Form mode */
   mode?: "create" | "edit";
   /** Called on form submit */
@@ -133,6 +143,10 @@ function SortableSectionWrapper({
 export default function EventForm({
   initialData,
   existingImages,
+  initialCarouselImages,
+  initialHostsData,
+  initialSections,
+  eventId,
   mode = "create",
 }: EventFormProps) {
   const router = useRouter();
@@ -185,18 +199,24 @@ export default function EventForm({
   } as EventFormData);
 
   // Cache the full profile objects for additional hosts
-  const [hostsData, setHostsData] = useState<ClubProfile[]>([]);
+  const [hostsData, setHostsData] = useState<ClubProfile[]>(
+    initialHostsData ?? [],
+  );
 
   // Dynamic section cards
-  const [sections, setSections] = useState<SectionData[]>([]);
+  const [sections, setSections] = useState<SectionData[]>(
+    initialSections ?? [],
+  );
 
   /* ── Carousel images (lifted state — persists across preview/edit toggle) ── */
-  const [carouselImages, setCarouselImages] = useState<CarouselImage[]>(() =>
-    (existingImages ?? []).map((url, i) => ({
-      id: `existing-${i}`,
-      file: null,
-      preview: url,
-    })),
+  const [carouselImages, setCarouselImages] = useState<CarouselImage[]>(
+    () =>
+      initialCarouselImages ??
+      (existingImages ?? []).map((url, i) => ({
+        id: `existing-${i}`,
+        file: null,
+        preview: url,
+      })),
   );
   const [managerOpen, setManagerOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
@@ -284,12 +304,24 @@ export default function EventForm({
     }
     setSaving(true);
     try {
-      // TODO: implement actual save logic (API call)
-      console.log("Saving event:", form);
-      await new Promise((r) => setTimeout(r, 1000)); // placeholder
-      router.push("/");
+      if (mode === "edit" && eventId) {
+        await updateEvent(eventId, form, carouselImages, sections);
+        toast.success("Event updated!");
+        router.push(`/events/${eventId}`);
+      } else {
+        const newId = await createEvent(form, carouselImages, sections);
+        toast.success("Event created!");
+        router.push(`/events/${newId}`);
+      }
     } catch (err) {
       console.error("Failed to save event:", err);
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : mode === "edit"
+            ? "Failed to update event"
+            : "Failed to create event",
+      );
     } finally {
       setSaving(false);
     }
