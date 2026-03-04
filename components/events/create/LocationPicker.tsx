@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import dynamic from "next/dynamic";
 import { ResponsiveModal } from "@/components/ui/responsive-modal";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,8 +15,31 @@ import {
   Info,
   ArrowLeft,
   Pencil,
+  ChevronDown,
+  Link,
+  ExternalLink,
+  CheckCircle2,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { LocationData, EditInputProps } from "../shared/types";
+
+/* Dynamically import Leaflet map (no SSR) */
+const LocationMap = dynamic(
+  () => import("./LocationMap").then((mod) => mod.LocationMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-45 items-center justify-center rounded-lg bg-muted">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    ),
+  },
+);
 
 /* ── Nominatim types ── */
 interface NominatimResult {
@@ -180,8 +204,111 @@ function useNominatimSearch(
   return { results, loading };
 }
 
+/* ── Google Maps URL parser ── */
+
+interface GoogleMapsParseResult {
+  displayName: string;
+  lat: number;
+  lon: number;
+  address: string;
+}
+
+/**
+ * Parse a Google Maps URL to extract the place name and coordinates.
+ * Prefers exact pin coords from !3d/!4d over the viewport @lat,lon.
+ */
+function parseGoogleMapsUrl(
+  url: string,
+): Omit<GoogleMapsParseResult, "address"> | null {
+  try {
+    // Must contain google.com/maps or google.*/maps
+    if (!/google\.[a-z.]+\/maps/i.test(url)) return null;
+
+    // Extract place name from /place/PLACE_NAME/
+    const placeMatch = url.match(/\/place\/([^/@]+)/);
+    const rawName = placeMatch?.[1] ?? "";
+    const displayName = decodeURIComponent(rawName.replace(/\+/g, " ")).trim();
+
+    let lat: number | null = null;
+    let lon: number | null = null;
+
+    // Prefer exact pin coordinates — use the LAST !3d/!4d pair
+    // (Google URLs can contain multiple places; the selected one is last)
+    const allLat = [...url.matchAll(/!3d(-?\d+\.\d+)/g)];
+    const allLon = [...url.matchAll(/!4d(-?\d+\.\d+)/g)];
+    if (allLat.length > 0 && allLon.length > 0) {
+      lat = parseFloat(allLat[allLat.length - 1][1]);
+      lon = parseFloat(allLon[allLon.length - 1][1]);
+    }
+
+    // Fallback to viewport @LAT,LON if exact coords not available
+    if (lat == null || lon == null || isNaN(lat) || isNaN(lon)) {
+      const coordMatch = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+      if (!coordMatch) return null;
+      lat = parseFloat(coordMatch[1]);
+      lon = parseFloat(coordMatch[2]);
+    }
+
+    if (isNaN(lat) || isNaN(lon)) return null;
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+
+    return { displayName: displayName || "Pinned Location", lat, lon };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reverse-geocode coordinates via Nominatim to get a human-readable address.
+ */
+async function reverseGeocode(
+  lat: number,
+  lon: number,
+  signal?: AbortSignal,
+): Promise<string> {
+  try {
+    const params = new URLSearchParams({
+      lat: String(lat),
+      lon: String(lon),
+      format: "json",
+      addressdetails: "1",
+      zoom: "18",
+    });
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?${params}`,
+      {
+        headers: {
+          "User-Agent": "Connect3Ticketing/1.0",
+          Accept: "application/json",
+        },
+        signal,
+      },
+    );
+    if (!res.ok) return "";
+    const data = await res.json();
+    // Build a concise address from parts
+    const addr = data.address;
+    if (!addr) return data.display_name || "";
+    const parts: string[] = [];
+    if (addr.road) {
+      const street = addr.house_number
+        ? `${addr.house_number} ${addr.road}`
+        : addr.road;
+      parts.push(street);
+    }
+    if (addr.suburb) parts.push(addr.suburb);
+    const city = addr.city || addr.town || addr.village;
+    if (city) parts.push(city);
+    if (addr.state) parts.push(addr.state);
+    if (addr.country) parts.push(addr.country);
+    return parts.length > 0 ? parts.join(", ") : data.display_name || "";
+  } catch {
+    return "";
+  }
+}
+
 /* ── Dialog pages ── */
-type DialogPage = "search" | "confirm";
+type DialogPage = "search" | "confirm" | "google-maps";
 
 type LocationPickerProps = EditInputProps<LocationData>;
 
@@ -200,6 +327,8 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
 
   const [draftDisplayName, setDraftDisplayName] = useState("");
   const [draftAddress, setDraftAddress] = useState("");
+  const [draftLat, setDraftLat] = useState<number | undefined>(undefined);
+  const [draftLon, setDraftLon] = useState<number | undefined>(undefined);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const displayNameRef = useRef<HTMLInputElement>(null);
@@ -212,18 +341,22 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
       // Prefill drafts with current location and go straight to confirm page
       setDraftDisplayName(value.displayName);
       setDraftAddress(value.address || "");
+      setDraftLat(value.lat);
+      setDraftLon(value.lon);
       setPage("confirm");
     } else {
       setPage("search");
     }
     setOpen(true);
-  }, [hasValue, value.displayName, value.address]);
+  }, [hasValue, value.displayName, value.address, value.lat, value.lon]);
 
   const handleSelectResult = useCallback((result: NominatimResult) => {
     const placeName = getPlaceName(result);
     const address = formatStreetAddress(result);
     setDraftDisplayName(placeName || address);
     setDraftAddress(placeName ? address : "");
+    setDraftLat(parseFloat(result.lat));
+    setDraftLon(parseFloat(result.lon));
     setPage("confirm");
     setTimeout(() => displayNameRef.current?.focus(), 50);
   }, []);
@@ -234,19 +367,93 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
     if (query) {
       setDraftDisplayName(query);
       setDraftAddress("");
+      // Manual input — no geocoded coordinates
+      setDraftLat(undefined);
+      setDraftLon(undefined);
     }
     // If query is empty and drafts already have content, just navigate back
-    // to confirm without resetting
+    // to confirm without resetting anything
     setPage("confirm");
     setTimeout(() => displayNameRef.current?.focus(), 50);
   }, [searchQuery]);
 
+  /* ── Google Maps paste ── */
+  const [googleUrl, setGoogleUrl] = useState("");
+  const [googleError, setGoogleError] = useState("");
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [googleParsed, setGoogleParsed] =
+    useState<GoogleMapsParseResult | null>(null);
+  const googleAbortRef = useRef<AbortController | null>(null);
+
+  const handleGoogleMapsPage = useCallback(() => {
+    setGoogleUrl("");
+    setGoogleError("");
+    setGoogleParsed(null);
+    setGoogleLoading(false);
+    setPage("google-maps");
+  }, []);
+
+  const handleGoogleUrlChange = useCallback(async (url: string) => {
+    setGoogleUrl(url);
+    googleAbortRef.current?.abort();
+
+    if (!url.trim()) {
+      setGoogleError("");
+      setGoogleParsed(null);
+      setGoogleLoading(false);
+      return;
+    }
+
+    const parsed = parseGoogleMapsUrl(url.trim());
+    if (!parsed) {
+      setGoogleError(
+        "Couldn't parse this URL. Make sure it's a Google Maps place link.",
+      );
+      setGoogleParsed(null);
+      setGoogleLoading(false);
+      return;
+    }
+
+    // Show immediately with loading state for address
+    setGoogleError("");
+    setGoogleLoading(true);
+    setGoogleParsed({ ...parsed, address: "" });
+
+    // Reverse-geocode to get the address
+    const controller = new AbortController();
+    googleAbortRef.current = controller;
+    const address = await reverseGeocode(
+      parsed.lat,
+      parsed.lon,
+      controller.signal,
+    );
+    if (!controller.signal.aborted) {
+      setGoogleParsed({ ...parsed, address });
+      setGoogleLoading(false);
+    }
+  }, []);
+
+  const handleGoogleConfirm = useCallback(() => {
+    if (!googleParsed) return;
+    setDraftDisplayName(googleParsed.displayName);
+    setDraftAddress(googleParsed.address || "");
+    setDraftLat(googleParsed.lat);
+    setDraftLon(googleParsed.lon);
+    setPage("confirm");
+    setTimeout(() => displayNameRef.current?.focus(), 50);
+  }, [googleParsed]);
+
   const handleConfirm = useCallback(() => {
     const name = draftDisplayName.trim();
     if (!name) return;
-    onChange({ displayName: name, address: draftAddress.trim() });
+    onChange({
+      displayName: name,
+      address: draftAddress.trim(),
+      lat: draftLat,
+      lon: draftLon,
+    });
     setOpen(false);
-  }, [draftDisplayName, draftAddress, onChange]);
+  }, [draftDisplayName, draftAddress, draftLat, draftLon, onChange]);
 
   const handleClear = useCallback(() => {
     onChange({ displayName: "", address: "" });
@@ -485,15 +692,133 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
               ) : (
                 <div />
               )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    Input manually
+                    <ChevronDown className="ml-0.5 h-3 w-3 opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={handleInputManually}>
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Custom
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleGoogleMapsPage}>
+                    <Link className="mr-2 h-4 w-4" />
+                    Google Maps URL
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </>
+        ) : page === "google-maps" ? (
+          /* ═══ PAGE 3: GOOGLE MAPS URL ═══ */
+          <>
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+                <h2 className="text-lg font-semibold leading-none tracking-tight">
+                  Google Maps
+                </h2>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Paste a Google Maps link to auto-fill the location.
+              </p>
+            </div>
+
+            {/* How-to banner */}
+            <div className="flex items-start gap-2.5 rounded-md bg-muted/60 px-3 py-2.5">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Open{" "}
+                <a
+                  href="https://maps.google.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-0.5 font-medium underline hover:text-foreground"
+                >
+                  Google Maps
+                  <ExternalLink className="h-3 w-3" />
+                </a>{" "}
+                → find your venue → <strong>Share</strong> →{" "}
+                <strong>Copy link</strong> and paste it below.
+              </p>
+            </div>
+
+            {/* URL input */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-muted-foreground">
+                Google Maps URL
+              </Label>
+              <Input
+                placeholder="https://www.google.com/maps/place/..."
+                value={googleUrl}
+                onChange={(e) => handleGoogleUrlChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (googleParsed && !googleLoading) handleGoogleConfirm();
+                  }
+                }}
+                autoFocus
+              />
+              {googleError && (
+                <p className="text-xs text-destructive">{googleError}</p>
+              )}
+            </div>
+
+            {/* Parsed preview */}
+            {googleParsed && (
+              <div className="space-y-3 rounded-md border border-green-500/30 bg-green-500/5 p-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-green-600 dark:text-green-400">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Location found
+                </div>
+                <LocationMap
+                  lat={googleParsed.lat}
+                  lon={googleParsed.lon}
+                  height={150}
+                />
+                <div className="text-sm">
+                  <p className="font-medium">{googleParsed.displayName}</p>
+                  {googleLoading ? (
+                    <p className="text-xs text-muted-foreground animate-pulse">
+                      Looking up address…
+                    </p>
+                  ) : googleParsed.address ? (
+                    <p className="text-xs text-muted-foreground">
+                      {googleParsed.address}
+                    </p>
+                  ) : null}
+                  <p className="text-xs text-muted-foreground">
+                    {googleParsed.lat.toFixed(6)}, {googleParsed.lon.toFixed(6)}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Footer */}
+            <div className="mt-auto flex items-center justify-end border-t pt-3">
               <Button
                 type="button"
-                variant="outline"
                 size="sm"
-                onClick={handleInputManually}
-                className="gap-1.5"
+                onClick={handleGoogleConfirm}
+                disabled={!googleParsed || googleLoading}
               >
-                <Pencil className="h-3.5 w-3.5" />
-                Input manually
+                Use this location
               </Button>
             </div>
           </>
@@ -520,6 +845,11 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
             </div>
 
             <div className="space-y-4">
+              {/* Map preview — only when we have coordinates from search */}
+              {draftLat != null && draftLon != null && (
+                <LocationMap lat={draftLat} lon={draftLon} height={180} />
+              )}
+
               {/* Info banner */}
               <div className="flex items-start gap-2.5 rounded-md bg-muted/60 px-3 py-2.5">
                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
@@ -552,18 +882,32 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
                 />
               </div>
 
-              {/* Address (optional) */}
+              {/* Address — read-only when from search (has coords), editable when manual */}
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium text-muted-foreground">
                   Address{" "}
-                  <span className="font-normal text-muted-foreground/60">
-                    (optional)
-                  </span>
+                  {draftLat == null ? (
+                    <span className="font-normal text-muted-foreground/60">
+                      (optional)
+                    </span>
+                  ) : (
+                    <span className="font-normal text-muted-foreground/60">
+                      (from search)
+                    </span>
+                  )}
                 </Label>
                 <Input
                   placeholder="e.g. 234 Queensberry St, Carlton"
                   value={draftAddress}
-                  onChange={(e) => setDraftAddress(e.target.value)}
+                  onChange={(e) => {
+                    if (draftLat == null) setDraftAddress(e.target.value);
+                  }}
+                  readOnly={draftLat != null}
+                  className={
+                    draftLat != null
+                      ? "bg-muted text-muted-foreground cursor-default"
+                      : ""
+                  }
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();

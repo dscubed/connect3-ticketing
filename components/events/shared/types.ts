@@ -24,6 +24,10 @@ export interface DateTimeData {
 export interface LocationData {
   displayName: string;
   address: string;
+  /** Latitude from geocoding — present when selected from search results */
+  lat?: number;
+  /** Longitude from geocoding — present when selected from search results */
+  lon?: number;
 }
 
 export interface ClubProfile {
