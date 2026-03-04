@@ -51,18 +51,21 @@ const LAYOUT_OPTIONS: {
   label: string;
   icon: React.ReactNode;
   description: string;
+  benefit: string;
 }[] = [
   {
     value: "card",
     label: "Card",
     icon: <LayoutGrid className="h-4 w-4" />,
     description: "Sections in bordered cards",
+    benefit: "Customisable",
   },
   {
     value: "classic",
     label: "Classic",
     icon: <AlignJustify className="h-4 w-4" />,
     description: "Headers with separator lines",
+    benefit: "Compact",
   },
 ];
 
@@ -157,12 +160,20 @@ export function ThemeDialog({
                   }
                 >
                   {/* Mini preview */}
-                  {opt.value === "card" ? (
-                    <CardLayoutPreview />
-                  ) : (
-                    <ClassicLayoutPreview />
-                  )}
-                  <span className="mt-1 text-sm font-medium">{opt.label}</span>
+                  <div className="flex h-1/2 items-center">
+                    {opt.value === "card" ? (
+                      <CardLayoutPreview />
+                    ) : (
+                      <ClassicLayoutPreview />
+                    )}
+                  </div>
+
+                  <span className="mt-1 text-sm font-medium">
+                    {opt.label} &middot;{" "}
+                    <span className="text-muted-foreground text-xs">
+                      {opt.benefit}
+                    </span>
+                  </span>
                   <span className="text-[11px] leading-tight text-muted-foreground">
                     {opt.description}
                   </span>
