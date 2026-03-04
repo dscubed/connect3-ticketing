@@ -40,7 +40,7 @@ export function LinksPicker({ value, onChange }: LinksPickerProps) {
           </span>
         )}
         {hasLinks && (
-          <Pencil className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+          <Pencil className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         )}
       </button>
 

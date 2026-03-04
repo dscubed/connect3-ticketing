@@ -22,7 +22,7 @@ export function CompaniesCard({ data }: CompaniesCardProps) {
                   <AvatarImage
                     src={c.logoUrl}
                     alt={c.name}
-                    className="rounded-lg"
+                    className="rounded-lg object-contain"
                   />
                 ) : null}
                 <AvatarFallback className="rounded-lg">

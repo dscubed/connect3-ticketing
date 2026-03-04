@@ -150,7 +150,7 @@ function SortablePanelistItem({
           variant="ghost"
           size="sm"
           onClick={() => onRemove(index)}
-          className="h-8 w-8 shrink-0 p-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive"
+          className="h-8 w-8 shrink-0 p-0 text-muted-foreground hover:text-destructive"
         >
           <Trash2 className="h-3.5 w-3.5" />
         </Button>

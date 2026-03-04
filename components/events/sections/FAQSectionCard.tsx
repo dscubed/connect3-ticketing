@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Trash2, GripVertical } from "lucide-react";
+import { Plus, Trash2, GripVertical, X, Lightbulb } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { FAQSectionData, FAQItem } from "./types";
 import {
@@ -23,7 +23,17 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+
+const SUGGESTED_QUESTIONS = [
+  "Dress Code",
+  "Experience Level",
+  "Venue Address",
+  "Contact Information",
+  "Parking & Transportation",
+  "Dietary Restrictions",
+  "Accessibility",
+];
 
 interface FAQSectionCardProps {
   data: FAQSectionData;
@@ -112,7 +122,7 @@ function SortableFAQItem({
           variant="ghost"
           size="sm"
           onClick={() => onRemove(index)}
-          className="mt-1.5 h-7 w-7 shrink-0 p-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive"
+          className="mt-1.5 h-7 w-7 shrink-0 p-0 text-muted-foreground hover:text-destructive"
         >
           <Trash2 className="h-3.5 w-3.5" />
         </Button>
@@ -127,6 +137,8 @@ export function FAQSectionCard({
   showAttentionBadge,
   isDark,
 }: FAQSectionCardProps) {
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, {
@@ -163,50 +175,120 @@ export function FAQSectionCard({
   };
 
   return (
-    <div>
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-      >
-        <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
-          <div className="divide-y">
-            {data.items.map((item, i) => (
-              <SortableFAQItem
-                key={itemIds[i]}
-                id={itemIds[i]}
-                item={item}
-                index={i}
-                canRemove={data.items.length > 1}
-                onUpdate={updateItem}
-                onRemove={removeItem}
-                isDark={isDark}
-              />
-            ))}
-          </div>
-        </SortableContext>
-      </DndContext>
-      <div className="relative">
-        {showAttentionBadge && (
-          <span className="absolute -right-1 -top-1 z-10 flex h-2.5 w-2.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />
-            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-blue-500" />
-          </span>
-        )}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={addItem}
+    <div className="space-y-4">
+      {/* Suggested Questions Banner */}
+      {!bannerDismissed && (
+        <div
           className={cn(
-            "w-full gap-1",
-            isDark &&
-              "border-neutral-600 text-neutral-300 hover:bg-neutral-700 hover:text-white",
+            "relative flex items-start gap-3 rounded-md border p-3",
+            isDark
+              ? "border-neutral-600 bg-neutral-700/50"
+              : "border-blue-200 bg-blue-50",
           )}
         >
-          <Plus className="h-4 w-4" />
-          Add Question
-        </Button>
+          <Lightbulb
+            className={cn(
+              "mt-0.5 h-4 w-4 shrink-0",
+              isDark ? "text-neutral-400" : "text-blue-600",
+            )}
+          />
+          <div className="flex-1 text-sm">
+            <p
+              className={cn(
+                "font-medium mb-2",
+                isDark ? "text-neutral-100" : "text-blue-900",
+              )}
+            >
+              Recommended questions to add:
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {SUGGESTED_QUESTIONS.map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => {
+                    // Check if question already exists
+                    if (!data.items.some((faq) => faq.question === q)) {
+                      onChange({
+                        ...data,
+                        items: [...data.items, { question: q, answer: "" }],
+                      });
+                    }
+                  }}
+                  className={cn(
+                    "text-xs font-medium px-2 py-1 rounded transition-colors",
+                    isDark
+                      ? "bg-neutral-600 text-neutral-100 hover:bg-neutral-500"
+                      : "bg-blue-100 text-blue-700 hover:bg-blue-200",
+                  )}
+                >
+                  + {q}
+                </button>
+              ))}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setBannerDismissed(true)}
+            className={cn(
+              "mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-opacity hover:opacity-75",
+              isDark && "text-neutral-400",
+            )}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* FAQ Items */}
+      <div>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={itemIds}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="divide-y">
+              {data.items.map((item, i) => (
+                <SortableFAQItem
+                  key={itemIds[i]}
+                  id={itemIds[i]}
+                  item={item}
+                  index={i}
+                  canRemove={data.items.length > 1}
+                  onUpdate={updateItem}
+                  onRemove={removeItem}
+                  isDark={isDark}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+        <div className="relative">
+          {showAttentionBadge && (
+            <span className="absolute -right-1 -top-1 z-10 flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-blue-500" />
+            </span>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={addItem}
+            className={cn(
+              "w-full gap-1",
+              isDark &&
+                "border-neutral-600 text-neutral-300 hover:bg-neutral-700 hover:text-white",
+            )}
+          >
+            <Plus className="h-4 w-4" />
+            Add Question
+          </Button>
+        </div>
       </div>
     </div>
   );
