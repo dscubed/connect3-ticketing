@@ -413,17 +413,18 @@ export default function EventForm({
 
   const addSection = (type: SectionType) => {
     setSections((prev) => [...prev, createBlankSection(type)]);
-    markDirty("sections");
+    markDirty(`section:${type}`);
   };
 
   const updateSection = (index: number, data: SectionData) => {
     setSections((prev) => prev.map((s, i) => (i === index ? data : s)));
-    markDirty("sections");
+    markDirty(`section:${data.type}`);
   };
 
   const removeSection = (index: number) => {
+    const removedType = sections[index].type;
     setSections((prev) => prev.filter((_, i) => i !== index));
-    markDirty("sections");
+    markDirty(`section:${removedType}`);
   };
 
   // In edit mode, use the actual event creator's profile from the DB.
@@ -511,10 +512,25 @@ export default function EventForm({
                 setForm((prev) => ({ ...prev, theme: result.formData.theme! }));
               }
               break;
-            case "sections":
-              setSections(result.sections);
-              break;
           }
+        }
+
+        // Merge remote section changes (skip sections the local user is focused on)
+        const remoteSectionGroups = groups.filter(
+          (g) => g.startsWith("section:") && g !== focused,
+        );
+        if (remoteSectionGroups.length > 0) {
+          setSections((prev) => {
+            const focusedType = focused?.startsWith("section:")
+              ? focused.split(":")[1]
+              : null;
+            const localFocused = focusedType
+              ? prev.find((s) => s.type === focusedType)
+              : null;
+            return result.sections.map((s) =>
+              s.type === focusedType && localFocused ? localFocused : s,
+            );
+          });
         }
 
         // Silently applied remote changes — no toast
@@ -595,7 +611,7 @@ export default function EventForm({
         "pricing",
         "links",
         "theme",
-        "sections",
+        ...sections.map((s) => `section:${s.type}` as FieldGroup),
       ]);
       toast.success("Event published!");
       router.push(`/events/${eventId}`);
@@ -623,7 +639,7 @@ export default function EventForm({
         "pricing",
         "links",
         "theme",
-        "sections",
+        ...sections.map((s) => `section:${s.type}` as FieldGroup),
       ]);
       toast.success("Event unpublished — moved back to drafts.");
     } catch (err) {
@@ -652,7 +668,7 @@ export default function EventForm({
     const oldIndex = sectionIds.indexOf(active.id as SectionType);
     const newIndex = sectionIds.indexOf(over.id as SectionType);
     setSections((prev) => arrayMove(prev, oldIndex, newIndex));
-    markDirty("sections");
+    markDirty(...sections.map((s) => `section:${s.type}` as FieldGroup));
   };
 
   /* ── Field focus broadcasting ── */
@@ -684,7 +700,13 @@ export default function EventForm({
     <div
       ref={section.type === "faq" ? faqsRef : undefined}
       className="relative mt-8"
+      onFocus={() => handleFieldFocus(`section:${section.type}`)}
+      onBlur={handleFieldBlur}
     >
+      <CollaboratorBadge
+        group={`section:${section.type}`}
+        collaborators={collaborators}
+      />
       {isEditing && section.type === "faq" && needsFaqBadge && (
         <AttentionBadge show />
       )}
@@ -1022,15 +1044,7 @@ export default function EventForm({
               />
             </div>
 
-            <div
-              onFocus={() => handleFieldFocus("sections")}
-              onBlur={handleFieldBlur}
-              className="relative"
-            >
-              <CollaboratorBadge
-                group="sections"
-                collaborators={collaborators}
-              />
+            <div>
               {isEditing ? (
                 <DndContext
                   sensors={sectionSensors}

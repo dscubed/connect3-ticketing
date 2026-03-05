@@ -388,7 +388,7 @@ export async function PUT(
    Field-level partial update.
    Body: { fields: string[], ...partialPayload }
    `fields` lists which field groups to update.
-   Valid groups: event, location, images, hosts, pricing, links, theme, sections
+   Valid groups: event, location, images, hosts, pricing, links, theme, section:<type>
    Only the listed groups are touched — everything else is left alone.
 ================================================================ */
 export async function PATCH(
@@ -638,23 +638,46 @@ export async function PATCH(
       updatedGroups.push("theme");
     }
 
-    /* ── sections ── */
-    if (groups.includes("sections")) {
-      const sectionItems: SectionPayload[] = body.sections ?? [];
+    /* ── Per-section upserts (section:faq, section:panelists, etc.) ── */
+    /* ── Per-section upserts (section:faq, section:panelists, etc.) ── */
+    const sectionItems: SectionPayload[] = body.sectionItems ?? [];
+    for (const s of sectionItems) {
       await supabaseAdmin
         .from("event_sections")
         .delete()
-        .eq("event_id", eventId);
-      if (sectionItems.length > 0) {
-        const rows = sectionItems.map((s, i) => ({
-          event_id: eventId,
-          type: s.type,
-          data: s.data,
-          sort_order: i,
-        }));
-        await supabaseAdmin.from("event_sections").insert(rows);
+        .eq("event_id", eventId)
+        .eq("type", s.type);
+
+      await supabaseAdmin.from("event_sections").insert({
+        event_id: eventId,
+        type: s.type,
+        data: s.data,
+        sort_order: 0,
+      });
+      updatedGroups.push(`section:${s.type}`);
+    }
+
+    /* ── Per-section deletes ── */
+    const deletedSections: string[] = body.deletedSections ?? [];
+    for (const type of deletedSections) {
+      await supabaseAdmin
+        .from("event_sections")
+        .delete()
+        .eq("event_id", eventId)
+        .eq("type", type);
+      updatedGroups.push(`section:${type}`);
+    }
+
+    /* ── Re-sync sort_order from client hint ── */
+    const sectionOrder: string[] | undefined = body.sectionOrder;
+    if (sectionOrder && sectionOrder.length > 0) {
+      for (let i = 0; i < sectionOrder.length; i++) {
+        await supabaseAdmin
+          .from("event_sections")
+          .update({ sort_order: i })
+          .eq("event_id", eventId)
+          .eq("type", sectionOrder[i]);
       }
-      updatedGroups.push("sections");
     }
 
     return NextResponse.json({

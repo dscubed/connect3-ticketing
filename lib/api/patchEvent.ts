@@ -3,9 +3,11 @@ import type {
   CarouselImage,
 } from "@/components/events/shared/types";
 import type { SectionData } from "@/components/events/sections/types";
+import type { SectionType } from "@/components/events/sections/types";
 
 /**
  * All field groups that can be independently patched.
+ * Sections use the pattern `section:<type>` (e.g. `section:faq`).
  */
 export type FieldGroup =
   | "event"
@@ -15,7 +17,7 @@ export type FieldGroup =
   | "pricing"
   | "links"
   | "theme"
-  | "sections";
+  | `section:${SectionType}`;
 
 /**
  * Builds the PATCH body for only the provided field groups.
@@ -73,8 +75,33 @@ function buildPatchBody(
     body.theme = form.theme;
   }
 
-  if (groups.includes("sections")) {
-    body.sections = sections.map((s) => ({ type: s.type, data: s }));
+  // Per-section groups: section:faq, section:panelists, etc.
+  const sectionGroups = groups.filter((g): g is `section:${SectionType}` =>
+    g.startsWith("section:"),
+  );
+  if (sectionGroups.length > 0) {
+    const sectionTypes = sectionGroups.map((g) => g.split(":")[1]);
+    const existingTypes = new Set<string>(sections.map((s) => s.type));
+
+    // Sections still present → upsert
+    const matchingSections = sections.filter((s) =>
+      sectionTypes.includes(s.type),
+    );
+    if (matchingSections.length > 0) {
+      body.sectionItems = matchingSections.map((s) => ({
+        type: s.type,
+        data: s,
+      }));
+    }
+
+    // Dirty types that no longer exist in state → delete
+    const deleted = sectionTypes.filter((t) => !existingTypes.has(t));
+    if (deleted.length > 0) {
+      body.deletedSections = deleted;
+    }
+
+    // Send full section order so API can re-sync sort_order
+    body.sectionOrder = sections.map((s) => s.type);
   }
 
   return body;
