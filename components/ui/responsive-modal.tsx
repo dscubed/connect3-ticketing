@@ -43,7 +43,6 @@ export function ResponsiveModal({
       <DismissableSheet
         open={open}
         onOpenChange={onOpenChange}
-        className={className}
       >
         {(title || description) && (
           <div className="mb-4 flex flex-col gap-1.5">

@@ -691,37 +691,63 @@ export default function EventForm({
     [broadcastFocus],
   );
 
+  /** Check if a field group is locked by another collaborator. */
+  const getFieldLock = useCallback(
+    (group: FieldGroup): { locked: boolean; lockedBy?: string } => {
+      for (const [, collab] of collaborators) {
+        if (collab.focusField === group) {
+          return { locked: true, lockedBy: collab.name };
+        }
+      }
+      return { locked: false };
+    },
+    [collaborators],
+  );
+
   /* ── Render a single section (edit or preview) ── */
   const renderSectionContent = (
     section: SectionData,
     index: number,
     dragHandleProps?: DragHandleProps,
-  ) => (
-    <div
-      ref={section.type === "faq" ? faqsRef : undefined}
-      className="relative mt-8"
-      onFocus={() => handleFieldFocus(`section:${section.type}`)}
-      onBlur={handleFieldBlur}
-    >
-      <CollaboratorBadge
-        group={`section:${section.type}`}
-        collaborators={collaborators}
-      />
-      {isEditing && section.type === "faq" && needsFaqBadge && (
-        <AttentionBadge show />
-      )}
-      <EventSectionField
-        mode={viewMode}
-        section={section}
-        index={index}
-        layout={theme.layout}
-        isDark={cardDark}
-        dragHandleProps={dragHandleProps}
-        onChange={updateSection}
-        onRemove={removeSection}
-      />
-    </div>
-  );
+  ) => {
+    const sectionGroup = `section:${section.type}` as FieldGroup;
+    const sectionLock = getFieldLock(sectionGroup);
+    return (
+      <div
+        ref={section.type === "faq" ? faqsRef : undefined}
+        className="relative mt-8"
+      >
+        <CollaboratorBadge
+          group={sectionGroup}
+          collaborators={collaborators}
+        />
+        {isEditing && section.type === "faq" && needsFaqBadge && (
+          <AttentionBadge show />
+        )}
+        <EventSectionField
+          mode={viewMode}
+          section={section}
+          index={index}
+          layout={theme.layout}
+          isDark={cardDark}
+          dragHandleProps={dragHandleProps}
+          onChange={updateSection}
+          onRemove={removeSection}
+          onFocusChange={(focused) => {
+            if (focused) {
+              handleFieldFocus(sectionGroup);
+              markDirty(sectionGroup);
+            } else {
+              focusedFieldRef.current = null;
+              broadcastFocus(null);
+            }
+          }}
+          locked={sectionLock.locked}
+          lockedBy={sectionLock.lockedBy}
+        />
+      </div>
+    );
+  };
 
   /* Solid bg color — only honoured in card layout */
   const solidBg =
@@ -1029,11 +1055,7 @@ export default function EventForm({
               theme.layout === "classic" ? "space-y-10" : "space-y-6",
             )}
           >
-            <div
-              onFocus={() => handleFieldFocus("event")}
-              onBlur={handleFieldBlur}
-              className="relative"
-            >
+            <div className="relative">
               <CollaboratorBadge group="event" collaborators={collaborators} />
               <EventDescriptionField
                 mode={viewMode}
@@ -1041,6 +1063,17 @@ export default function EventForm({
                 onChange={(v) => updateField("description", v)}
                 layout={theme.layout}
                 isDark={cardDark}
+                onFocusChange={(focused) => {
+                  if (focused) {
+                    handleFieldFocus("event");
+                    markDirty("event");
+                  } else {
+                    focusedFieldRef.current = null;
+                    broadcastFocus(null);
+                  }
+                }}
+                locked={getFieldLock("event").locked}
+                lockedBy={getFieldLock("event").lockedBy}
               />
             </div>
 

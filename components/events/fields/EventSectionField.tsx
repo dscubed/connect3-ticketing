@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useRef, useEffect } from "react";
 import type { SectionData, DragHandleProps } from "../sections";
 import type { ThemeLayout } from "../shared/types";
 import {
@@ -27,7 +28,9 @@ import {
   Building2,
   ReceiptText,
   Trash2,
+  Lock,
 } from "lucide-react";
+import { toast } from "sonner";
 
 /* ── Section metadata (title + icon per type) ── */
 const SECTION_META: Record<
@@ -50,6 +53,12 @@ interface EventSectionFieldProps {
   dragHandleProps?: DragHandleProps;
   onChange?: (index: number, data: SectionData) => void;
   onRemove?: (index: number) => void;
+  /** Called when the inline focus state changes (true = focused, false = blurred). */
+  onFocusChange?: (focused: boolean) => void;
+  /** When true, another collaborator is editing this section. */
+  locked?: boolean;
+  /** Display name of the collaborator holding the lock. */
+  lockedBy?: string;
 }
 
 export function EventSectionField({
@@ -61,10 +70,47 @@ export function EventSectionField({
   dragHandleProps,
   onChange,
   onRemove,
+  onFocusChange,
+  locked,
+  lockedBy,
 }: EventSectionFieldProps) {
-  const meta = SECTION_META[section.type];
+  const [focused, setFocused] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  /* Edit-mode header slots */
+  /* Click-outside detection (ignores portaled dialogs / popovers) */
+  useEffect(() => {
+    if (!focused || mode !== "edit") return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target.closest(
+          '[role="dialog"], [role="alertdialog"], [data-radix-popper-content-wrapper]',
+        )
+      )
+        return;
+      if (containerRef.current && !containerRef.current.contains(target)) {
+        setFocused(false);
+        onFocusChange?.(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [focused, mode, onFocusChange]);
+
+  const handleClick = () => {
+    if (mode !== "edit" || focused) return;
+    if (locked) {
+      toast.info(`${lockedBy ?? "Someone"} is currently editing this section`);
+      return;
+    }
+    setFocused(true);
+    onFocusChange?.(true);
+  };
+
+  const meta = SECTION_META[section.type];
+  const showEditContent = mode === "edit" && focused && !locked;
+
+  /* Edit-mode header slots — always visible in edit mode regardless of focus */
   const headerLeft =
     mode === "edit" && dragHandleProps ? (
       <SectionDragHandle dragHandleProps={dragHandleProps} />
@@ -85,77 +131,105 @@ export function EventSectionField({
       </Button>
     ) : undefined;
 
-  /* Inner content — preview or edit */
+  /* Inner content — preview when unfocused, edit when focused */
   const renderContent = () => {
-    if (mode === "preview") {
+    if (showEditContent) {
       switch (section.type) {
         case "faq":
-          return <FAQCard data={section} />;
+          return (
+            <FAQSectionCard
+              data={section}
+              onChange={(d) => onChange?.(index, d)}
+              isDark={isDark}
+            />
+          );
         case "what-to-bring":
-          return <WhatToBringCard data={section} />;
+          return (
+            <WhatToBringSectionCard
+              data={section}
+              onChange={(d) => onChange?.(index, d)}
+              isDark={isDark}
+            />
+          );
         case "panelists":
-          return <PanelistsCard data={section} />;
+          return (
+            <PanelistsSectionCard
+              data={section}
+              onChange={(d) => onChange?.(index, d)}
+              isDark={isDark}
+            />
+          );
         case "companies":
-          return <CompaniesCard data={section} />;
+          return (
+            <CompaniesSectionCard
+              data={section}
+              onChange={(d) => onChange?.(index, d)}
+              isDark={isDark}
+            />
+          );
         case "refund-policy":
-          return <RefundPolicyCard data={section} />;
+          return (
+            <RefundPolicySectionCard
+              data={section}
+              onChange={(d) => onChange?.(index, d)}
+              isDark={isDark}
+            />
+          );
       }
     }
 
+    /* Preview content (global preview mode OR edit-mode unfocused) */
     switch (section.type) {
       case "faq":
-        return (
-          <FAQSectionCard
-            data={section}
-            onChange={(d) => onChange?.(index, d)}
-            isDark={isDark}
-          />
-        );
+        return <FAQCard data={section} />;
       case "what-to-bring":
-        return (
-          <WhatToBringSectionCard
-            data={section}
-            onChange={(d) => onChange?.(index, d)}
-            isDark={isDark}
-          />
-        );
+        return <WhatToBringCard data={section} />;
       case "panelists":
-        return (
-          <PanelistsSectionCard
-            data={section}
-            onChange={(d) => onChange?.(index, d)}
-            isDark={isDark}
-          />
-        );
+        return <PanelistsCard data={section} />;
       case "companies":
-        return (
-          <CompaniesSectionCard
-            data={section}
-            onChange={(d) => onChange?.(index, d)}
-            isDark={isDark}
-          />
-        );
+        return <CompaniesCard data={section} />;
       case "refund-policy":
-        return (
-          <RefundPolicySectionCard
-            data={section}
-            onChange={(d) => onChange?.(index, d)}
-            isDark={isDark}
-          />
-        );
+        return <RefundPolicyCard data={section} />;
     }
   };
 
   return (
-    <SectionWrapper
-      title={meta.title}
-      icon={meta.icon}
-      layout={layout}
-      isDark={isDark}
-      headerLeft={headerLeft}
-      headerRight={headerRight}
-    >
-      {renderContent()}
-    </SectionWrapper>
+    <div ref={containerRef} className="relative">
+      {/* Lock overlay */}
+      {mode === "edit" && locked && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-background/50 backdrop-blur-[1px]">
+          <div className="flex items-center gap-1.5 rounded-full bg-muted/80 px-3 py-1.5 text-xs text-muted-foreground shadow-sm">
+            <Lock className="h-3 w-3" />
+            {lockedBy ?? "Someone"} is editing…
+          </div>
+        </div>
+      )}
+
+      <SectionWrapper
+        title={meta.title}
+        icon={meta.icon}
+        layout={layout}
+        isDark={isDark}
+        headerLeft={headerLeft}
+        headerRight={headerRight}
+      >
+        <div
+          onClick={handleClick}
+          className={cn(
+            mode === "edit" &&
+              !focused &&
+              !locked &&
+              "cursor-pointer rounded-md p-2 -m-2 transition-colors",
+            mode === "edit" &&
+              !focused &&
+              !locked &&
+              (isDark ? "hover:bg-neutral-700/50" : "hover:bg-muted/50"),
+            mode === "edit" && locked && "cursor-not-allowed",
+          )}
+        >
+          {renderContent()}
+        </div>
+      </SectionWrapper>
+    </div>
   );
 }
