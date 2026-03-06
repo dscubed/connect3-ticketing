@@ -695,3 +695,90 @@ export async function PATCH(
     );
   }
 }
+
+/* ================================================================
+   DELETE /api/events/[id]
+   Deletes an event and all associated records.
+   Only the event creator can delete.
+================================================================ */
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { id: eventId } = await params;
+
+    /* ── Auth check ── */
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    /* ── Verify the event exists and user is the creator ── */
+    const { data: event, error: fetchError } = await supabaseAdmin
+      .from("events")
+      .select("id, creator_profile_id")
+      .eq("id", eventId)
+      .single();
+
+    if (fetchError || !event) {
+      return NextResponse.json({ error: "Event not found" }, { status: 404 });
+    }
+
+    if (event.creator_profile_id !== user.id) {
+      return NextResponse.json(
+        { error: "Only the event creator can delete this event" },
+        { status: 403 },
+      );
+    }
+
+    /* ── Delete related records in parallel ── */
+    await Promise.all([
+      supabaseAdmin.from("event_images").delete().eq("event_id", eventId),
+      supabaseAdmin.from("event_hosts").delete().eq("event_id", eventId),
+      supabaseAdmin.from("event_ticket_tiers").delete().eq("event_id", eventId),
+      supabaseAdmin.from("event_links").delete().eq("event_id", eventId),
+      supabaseAdmin.from("event_themes").delete().eq("event_id", eventId),
+      supabaseAdmin.from("event_sections").delete().eq("event_id", eventId),
+    ]);
+
+    /* ── Delete the event itself ── */
+    const { error: deleteError } = await supabaseAdmin
+      .from("events")
+      .delete()
+      .eq("id", eventId);
+
+    if (deleteError) {
+      throw new Error(`Event delete failed: ${deleteError.message}`);
+    }
+
+    /* ── Clean up storage (best-effort) ── */
+    try {
+      const { data: files } = await supabaseAdmin.storage
+        .from("media")
+        .list(`${user.id}/events/${eventId}/images`);
+      if (files && files.length > 0) {
+        const paths = files.map(
+          (f) => `${user.id}/events/${eventId}/images/${f.name}`,
+        );
+        await supabaseAdmin.storage.from("media").remove(paths);
+      }
+    } catch {
+      // Non-critical — storage cleanup failure shouldn't block delete
+    }
+
+    return NextResponse.json({ message: "Event deleted" });
+  } catch (error) {
+    console.error("DELETE /api/events/[id] error:", error);
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "Internal server error",
+      },
+      { status: 500 },
+    );
+  }
+}

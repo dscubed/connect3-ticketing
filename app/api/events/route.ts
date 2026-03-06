@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
     let query = supabaseAdmin
       .from("events")
       .select(
-        "id, name, description, start, end, thumbnail, is_online, capacity, category, published_at, status, created_at",
+        "id, name, description, start, end, thumbnail, is_online, capacity, category, published_at, status, created_at, creator_profile_id",
       )
       .or(
         collabEventIds.length > 0

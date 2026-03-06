@@ -19,6 +19,16 @@ import { CreateEventModal } from "@/components/events/CreateEventModal";
 import Image from "next/image";
 import { toast } from "sonner";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   CalendarDays,
   Plus,
   Ticket,
@@ -29,6 +39,7 @@ import {
   Mail,
   CheckCircle2,
   XCircle,
+  Trash2,
 } from "lucide-react";
 
 interface Event {
@@ -44,6 +55,7 @@ interface Event {
   status: string;
   published_at: string | null;
   created_at: string;
+  creator_profile_id: string;
 }
 
 interface InviteEvent {
@@ -92,6 +104,14 @@ export function OrgDashboard() {
   const [invites, setInvites] = useState<Invite[]>([]);
   const [invitesLoading, setInvitesLoading] = useState(false);
   const [respondingTo, setRespondingTo] = useState<string | null>(null);
+
+  /* ── Delete state ── */
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    open: boolean;
+    eventId: string;
+    eventName: string;
+  }>({ open: false, eventId: "", eventName: "" });
+  const [deleting, setDeleting] = useState(false);
 
   const { ref: sentinelRef, isIntersecting } = useIntersection({
     rootMargin: "200px",
@@ -204,6 +224,29 @@ export function OrgDashboard() {
       toast.error("Failed to respond to invite");
     } finally {
       setRespondingTo(null);
+    }
+  };
+
+  /* ── Delete event ── */
+  const handleDeleteEvent = async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/events/${deleteConfirm.eventId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        toast.success("Event deleted");
+        setEvents((prev) => prev.filter((e) => e.id !== deleteConfirm.eventId));
+      } else {
+        const err = await res.json();
+        toast.error(err.error || "Failed to delete event");
+      }
+    } catch (err) {
+      console.error("Failed to delete event:", err);
+      toast.error("Failed to delete event");
+    } finally {
+      setDeleting(false);
+      setDeleteConfirm({ open: false, eventId: "", eventName: "" });
     }
   };
 
@@ -484,6 +527,22 @@ export function OrgDashboard() {
                           <Ticket className="h-4 w-4" />
                           Ticketing
                         </Button>
+                        {user && event.creator_profile_id === user.id && (
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            onClick={() =>
+                              setDeleteConfirm({
+                                open: true,
+                                eventId: event.id,
+                                eventName: event.name || "Untitled Event",
+                              })
+                            }
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -500,6 +559,40 @@ export function OrgDashboard() {
           )}
         </>
       )}
+
+      {/* Delete confirmation */}
+      <AlertDialog
+        open={deleteConfirm.open}
+        onOpenChange={(open) => {
+          if (!open)
+            setDeleteConfirm({ open: false, eventId: "", eventName: "" });
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Event</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete &ldquo;{deleteConfirm.eventName}
+              &rdquo;? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteEvent}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 h-4 w-4" />
+              )}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
