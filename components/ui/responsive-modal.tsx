@@ -40,10 +40,7 @@ export function ResponsiveModal({
 
   if (isMobile) {
     return (
-      <DismissableSheet
-        open={open}
-        onOpenChange={onOpenChange}
-      >
+      <DismissableSheet open={open} onOpenChange={onOpenChange}>
         {(title || description) && (
           <div className="mb-4 flex flex-col gap-1.5">
             {title && (

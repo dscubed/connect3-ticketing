@@ -717,10 +717,7 @@ export default function EventForm({
         ref={section.type === "faq" ? faqsRef : undefined}
         className="relative mt-8"
       >
-        <CollaboratorBadge
-          group={sectionGroup}
-          collaborators={collaborators}
-        />
+        <CollaboratorBadge group={sectionGroup} collaborators={collaborators} />
         {isEditing && section.type === "faq" && needsFaqBadge && (
           <AttentionBadge show />
         )}
