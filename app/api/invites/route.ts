@@ -27,7 +27,7 @@ export async function GET(request: Request) {
       .select(
         `id, event_id, inviter_id, status, sort_order,
          events:event_id(id, name, thumbnail, start, end, is_online, category, status),
-         inviter:inviter_id(id, first_name, avatar_url)`,
+         inviter:inviter_id(id, first_name, last_name, avatar_url)`,
       )
       .eq("profile_id", user.id)
       .in("status", ["pending", "accepted"])

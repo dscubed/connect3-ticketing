@@ -338,11 +338,14 @@ function PostList({
 interface CreateEventModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** When provided, the event is created under this club rather than the current user. */
+  clubId?: string;
 }
 
 export function CreateEventModal({
   open,
   onOpenChange,
+  clubId,
 }: CreateEventModalProps) {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
@@ -432,7 +435,10 @@ export function CreateEventModal({
       const res = await fetch("/api/media/instagram/posts/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ postId: selectedPost.id }),
+        body: JSON.stringify({
+          postId: selectedPost.id,
+          ...(clubId ? { clubId } : {}),
+        }),
       });
 
       const json = await res.json();
@@ -534,7 +540,10 @@ export function CreateEventModal({
                 className="h-auto justify-start gap-4 px-4 py-4"
                 onClick={() => {
                   onOpenChange(false);
-                  router.push("/events/create");
+                  const url = clubId
+                    ? `/events/create?club_id=${clubId}`
+                    : "/events/create";
+                  router.push(url);
                 }}
               >
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">

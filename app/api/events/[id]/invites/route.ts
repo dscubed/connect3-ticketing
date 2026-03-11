@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { checkEventPermission } from "@/lib/auth/clubAdmin";
 
 /* ================================================================
    POST /api/events/[id]/invites
@@ -26,7 +27,7 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    /* Verify the user is the event creator */
+    /* Verify the user is the event creator or club admin */
     const { data: event } = await supabaseAdmin
       .from("events")
       .select("creator_profile_id")
@@ -36,9 +37,11 @@ export async function POST(
     if (!event) {
       return NextResponse.json({ error: "Event not found" }, { status: 404 });
     }
-    if (event.creator_profile_id !== user.id) {
+
+    const perm = await checkEventPermission(eventId, user.id);
+    if (!perm.isCreator && !perm.isClubAdmin) {
       return NextResponse.json(
-        { error: "Only the event creator can send invites" },
+        { error: "Only the event creator or a club admin can send invites" },
         { status: 403 },
       );
     }
@@ -117,7 +120,7 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    /* Verify creator or accepted collaborator */
+    /* Verify creator or accepted collaborator or club admin */
     const { data: event } = await supabaseAdmin
       .from("events")
       .select("creator_profile_id")
@@ -128,18 +131,9 @@ export async function GET(
       return NextResponse.json({ error: "Event not found" }, { status: 404 });
     }
 
-    const isCreator = event.creator_profile_id === user.id;
-    if (!isCreator) {
-      const { data: hostRow } = await supabaseAdmin
-        .from("event_hosts")
-        .select("status")
-        .eq("event_id", eventId)
-        .eq("profile_id", user.id)
-        .eq("status", "accepted")
-        .maybeSingle();
-      if (!hostRow) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
+    const getPerm = await checkEventPermission(eventId, user.id);
+    if (!getPerm.isCreator && !getPerm.isCollaborator && !getPerm.isClubAdmin) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     /* Get all hosts with invite status */
@@ -200,19 +194,20 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    /* Verify the user is the event creator */
-    const { data: event } = await supabaseAdmin
+    /* Verify the user is the event creator or club admin */
+    const { data: delEvent } = await supabaseAdmin
       .from("events")
       .select("creator_profile_id")
       .eq("id", eventId)
       .single();
 
-    if (!event) {
+    if (!delEvent) {
       return NextResponse.json({ error: "Event not found" }, { status: 404 });
     }
-    if (event.creator_profile_id !== user.id) {
+    const delPerm = await checkEventPermission(eventId, user.id);
+    if (!delPerm.isCreator && !delPerm.isClubAdmin) {
       return NextResponse.json(
-        { error: "Only the event creator can manage invites" },
+        { error: "Only the event creator or a club admin can manage invites" },
         { status: 403 },
       );
     }
@@ -290,19 +285,20 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    /* Verify the user is the event creator */
-    const { data: event } = await supabaseAdmin
+    /* Verify the user is the event creator or club admin */
+    const { data: patchEvent } = await supabaseAdmin
       .from("events")
       .select("creator_profile_id")
       .eq("id", eventId)
       .single();
 
-    if (!event) {
+    if (!patchEvent) {
       return NextResponse.json({ error: "Event not found" }, { status: 404 });
     }
-    if (event.creator_profile_id !== user.id) {
+    const patchPerm = await checkEventPermission(eventId, user.id);
+    if (!patchPerm.isCreator && !patchPerm.isClubAdmin) {
       return NextResponse.json(
-        { error: "Only the event creator can resend invites" },
+        { error: "Only the event creator or a club admin can resend invites" },
         { status: 403 },
       );
     }

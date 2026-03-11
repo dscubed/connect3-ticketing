@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { checkEventPermission } from "@/lib/auth/clubAdmin";
 
 /* ── Types ── */
 interface TicketTierPayload {
@@ -135,29 +136,11 @@ export async function PUT(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    /* ── Verify ownership or accepted collaborator ── */
-    const { data: existing } = await supabaseAdmin
-      .from("events")
-      .select("creator_profile_id")
-      .eq("id", eventId)
-      .single();
+    /* ── Verify ownership, accepted collaborator, or club admin ── */
+    const { isCreator, isCollaborator, isClubAdmin } =
+      await checkEventPermission(eventId, user.id);
 
-    if (!existing) {
-      return NextResponse.json({ error: "Event not found" }, { status: 404 });
-    }
-    const isCreator = existing.creator_profile_id === user.id;
-    let isCollaborator = false;
-    if (!isCreator) {
-      const { data: hostRow } = await supabaseAdmin
-        .from("event_hosts")
-        .select("status")
-        .eq("event_id", eventId)
-        .eq("profile_id", user.id)
-        .eq("status", "accepted")
-        .maybeSingle();
-      isCollaborator = !!hostRow;
-    }
-    if (!isCreator && !isCollaborator) {
+    if (!isCreator && !isCollaborator && !isClubAdmin) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -408,7 +391,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    /* ── Verify ownership or accepted collaborator ── */
+    /* ── Verify ownership, accepted collaborator, or club admin ── */
     const { data: existing } = await supabaseAdmin
       .from("events")
       .select("creator_profile_id, location_id")
@@ -418,18 +401,13 @@ export async function PATCH(
     if (!existing) {
       return NextResponse.json({ error: "Event not found" }, { status: 404 });
     }
-    const isCreator = existing.creator_profile_id === user.id;
-    if (!isCreator) {
-      const { data: hostRow } = await supabaseAdmin
-        .from("event_hosts")
-        .select("status")
-        .eq("event_id", eventId)
-        .eq("profile_id", user.id)
-        .eq("status", "accepted")
-        .maybeSingle();
-      if (!hostRow) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
+    const patchPerm = await checkEventPermission(eventId, user.id);
+    if (
+      !patchPerm.isCreator &&
+      !patchPerm.isCollaborator &&
+      !patchPerm.isClubAdmin
+    ) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const body = await request.json();
@@ -719,7 +697,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    /* ── Verify the event exists and user is the creator ── */
+    /* ── Verify the event exists and user is the creator or club admin ── */
     const { data: event, error: fetchError } = await supabaseAdmin
       .from("events")
       .select("id, creator_profile_id")
@@ -730,9 +708,12 @@ export async function DELETE(
       return NextResponse.json({ error: "Event not found" }, { status: 404 });
     }
 
-    if (event.creator_profile_id !== user.id) {
+    const delPerm = await checkEventPermission(eventId, user.id);
+    if (!delPerm.isCreator && !delPerm.isClubAdmin) {
       return NextResponse.json(
-        { error: "Only the event creator can delete this event" },
+        {
+          error: "Only the event creator or a club admin can delete this event",
+        },
         { status: 403 },
       );
     }

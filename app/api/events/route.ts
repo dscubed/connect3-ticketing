@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { getClubAdminRow, getAdminClubIds } from "@/lib/auth/clubAdmin";
 
 /* ── Types matching the JSON payload ── */
 
@@ -35,6 +36,7 @@ interface SectionPayload {
    Fetches events for a given creator (or collaborator).
    Query params:
      - creator_id: UUID of the organisation profile
+     - club_id: (optional) UUID of the club — for club admins fetching a club's events
      - status: filter by event status ("draft" | "published" | "archived")
      - cursor: ISO timestamp for cursor-based pagination (returns events before this)
      - limit: max results (default: 20)
@@ -43,13 +45,72 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const creatorId = searchParams.get("creator_id");
+    const clubId = searchParams.get("club_id");
     const statusFilter = searchParams.get("status");
     const cursor = searchParams.get("cursor");
     const limit = parseInt(searchParams.get("limit") || "20", 10);
 
+    /* ── Mode 1: Club admin fetching a specific club's events ── */
+    if (clubId) {
+      /* Auth check — caller must be logged in */
+      const supabase = await createClient();
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+      if (authError || !user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+
+      /* Verify the caller is either the club owner or an accepted admin */
+      const isOwner = clubId === user.id;
+      if (!isOwner) {
+        const adminRow = await getClubAdminRow(clubId, user.id);
+        if (!adminRow) {
+          return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
+      }
+
+      /* Fetch events owned by the club + events where club is collaborator */
+      const { data: collabRows } = await supabaseAdmin
+        .from("event_hosts")
+        .select("event_id")
+        .eq("profile_id", clubId)
+        .eq("status", "accepted");
+      const collabEventIds = (collabRows ?? []).map((r) => r.event_id);
+
+      let query = supabaseAdmin
+        .from("events")
+        .select(
+          "id, name, description, start, end, thumbnail, is_online, capacity, category, published_at, status, created_at, creator_profile_id",
+        )
+        .or(
+          collabEventIds.length > 0
+            ? `creator_profile_id.eq.${clubId},id.in.(${collabEventIds.join(",")})`
+            : `creator_profile_id.eq.${clubId}`,
+        )
+        .order("created_at", { ascending: false })
+        .limit(limit + 1);
+
+      if (statusFilter) query = query.eq("status", statusFilter);
+      if (cursor) query = query.lt("created_at", cursor);
+
+      const { data, error } = await query;
+      if (error) {
+        console.error("Events fetch error:", error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      const hasMore = (data?.length ?? 0) > limit;
+      const items = hasMore ? data!.slice(0, limit) : (data ?? []);
+      const nextCursor = hasMore ? items[items.length - 1].created_at : null;
+      return NextResponse.json({ data: items, hasMore, nextCursor });
+    }
+
+    /* ── Mode 2: Original — creator_id based ── */
     if (!creatorId) {
       return NextResponse.json(
-        { error: "creator_id is required" },
+        { error: "creator_id or club_id is required" },
         { status: 400 },
       );
     }
@@ -185,6 +246,23 @@ export async function POST(request: NextRequest) {
       locationId = loc.id;
     }
 
+    /* ── Determine the creator_profile_id ──
+       If club_id is provided, verify the user is a club admin and
+       set the event's creator to the club, not the user. */
+    const clubId: string | null = body.clubId || null;
+    let creatorProfileId = user.id;
+    if (clubId) {
+      const adminRow = await getClubAdminRow(clubId, user.id);
+      const isOwner = clubId === user.id;
+      if (!isOwner && !adminRow) {
+        return NextResponse.json(
+          { error: "You are not an admin of this club" },
+          { status: 403 },
+        );
+      }
+      creatorProfileId = clubId;
+    }
+
     /* ── Insert event row ── */
     const thumbnail = imageUrls[0] ?? null;
     const { error: eventErr } = await supabaseAdmin.from("events").insert({
@@ -193,7 +271,7 @@ export async function POST(request: NextRequest) {
       description,
       start: startTs,
       end: endTs,
-      creator_profile_id: user.id,
+      creator_profile_id: creatorProfileId,
       status: eventStatus,
       published_at:
         eventStatus === "published" ? new Date().toISOString() : null,

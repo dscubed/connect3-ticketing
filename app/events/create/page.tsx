@@ -9,6 +9,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
  * Supported query params:
  *   ?ig_post_id=xxx  — links the new draft to an Instagram post (for future use)
  *   ?source=xxx      — records where the event creation was triggered from
+ *   ?club_id=xxx     — creates the event under a club (user must be a club admin)
  *
  * Auth is required — unauthenticated users are sent to the home page.
  */
@@ -32,6 +33,25 @@ export default async function CreateEventPage({
   const igPostId =
     typeof params.ig_post_id === "string" ? params.ig_post_id : undefined;
   const source = typeof params.source === "string" ? params.source : "connect3";
+  const clubId =
+    typeof params.club_id === "string" ? params.club_id : undefined;
+
+  /* ── If club_id provided, verify user is an accepted admin ── */
+  let creatorProfileId = user.id;
+  if (clubId) {
+    const { data: adminRow } = await supabaseAdmin
+      .from("club_admins")
+      .select("id")
+      .eq("club_id", clubId)
+      .eq("user_id", user.id)
+      .eq("status", "accepted")
+      .maybeSingle();
+
+    if (adminRow) {
+      creatorProfileId = clubId;
+    }
+    // If not a valid admin, fall back to creating under own profile
+  }
 
   /* ── Create a minimal draft row ── */
   const eventId = nanoid(21);
@@ -42,7 +62,7 @@ export default async function CreateEventPage({
     description: null,
     start: null,
     end: null,
-    creator_profile_id: user.id,
+    creator_profile_id: creatorProfileId,
     status: "draft",
     published_at: null,
     is_online: false,
