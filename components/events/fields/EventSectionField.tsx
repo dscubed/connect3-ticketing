@@ -226,14 +226,17 @@ export function EventSectionField({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <div ref={containerRef} className="relative">
-        {/* Lock overlay */}
+      <div
+        ref={containerRef}
+        className={cn(
+          "relative",
+          mode === "edit" && locked && "opacity-50 pointer-events-auto",
+        )}
+      >
+        {/* Subtle lock indicator */}
         {mode === "edit" && locked && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-background/50 backdrop-blur-[1px]">
-            <div className="flex items-center gap-1.5 rounded-full bg-muted/80 px-3 py-1.5 text-xs text-muted-foreground shadow-sm">
-              <Lock className="h-3 w-3" />
-              {lockedBy ?? "Someone"} is editing…
-            </div>
+          <div className="absolute right-2 top-2 z-10">
+            <Lock className="h-3.5 w-3.5 text-muted-foreground/60" />
           </div>
         )}
 

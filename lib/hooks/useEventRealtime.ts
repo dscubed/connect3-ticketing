@@ -25,13 +25,13 @@ interface UseEventRealtimeOptions {
 }
 
 /**
- * Supabase Broadcast-based realtime hook for collaborative event editing.
+ * Supabase Realtime hook for collaborative event editing.
  *
- * Broadcasts:
- *  - `event-updated` — after saving, includes `{ user_id, groups }`.
- *  - `field-focus`   — when a user focuses/blurs a field, includes `{ user_id, name, field }`.
+ * Uses **Presence** for focus/lock tracking — new joiners automatically
+ * receive the full presence state of everyone already in the channel,
+ * so refreshing never causes stale lock info.
  *
- * The hook also tracks other collaborators' focus state via `collaborators`.
+ * Uses **Broadcast** for one-shot `event-updated` notifications (saves).
  */
 export function useEventRealtime({
   eventId,
@@ -56,10 +56,33 @@ export function useEventRealtime({
 
     const supabase = createClient();
     const channel = supabase.channel(`event-edit:${eventId}`, {
-      config: { broadcast: { self: false } },
+      config: { broadcast: { self: false }, presence: { key: userId } },
     });
 
+    /** Rebuild the collaborators map from the full presence state. */
+    const syncCollaborators = () => {
+      const state = channel.presenceState<{
+        userId: string;
+        name: string;
+        focusField: FieldGroup | null;
+      }>();
+      const next = new Map<string, CollaboratorPresence>();
+      for (const [key, presences] of Object.entries(state)) {
+        if (key === userId) continue; // skip self
+        const latest = presences[presences.length - 1];
+        if (latest) {
+          next.set(key, {
+            userId: latest.userId,
+            name: latest.name,
+            focusField: latest.focusField,
+          });
+        }
+      }
+      setCollaborators(next);
+    };
+
     channel
+      // Broadcast: one-shot save notifications
       .on(
         "broadcast",
         { event: "event-updated" },
@@ -67,39 +90,30 @@ export function useEventRealtime({
           onRemoteChangeRef.current(msg.payload.groups ?? []);
         },
       )
-      .on(
-        "broadcast",
-        { event: "field-focus" },
-        (msg: {
-          payload: {
-            user_id: string;
-            name: string;
-            field: FieldGroup | null;
-          };
-        }) => {
-          const { user_id, name, field } = msg.payload;
-          if (user_id === userId) return;
-          setCollaborators((prev) => {
-            const next = new Map(prev);
-            if (field === null) {
-              next.delete(user_id);
-            } else {
-              next.set(user_id, { userId: user_id, name, focusField: field });
-            }
-            return next;
+      // Presence: sync & join/leave events all update the same way
+      .on("presence", { event: "sync" }, () => {
+        syncCollaborators();
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          // Track our own presence (initially no focus)
+          await channel.track({
+            userId,
+            name: userName ?? "Someone",
+            focusField: null,
           });
-        },
-      )
-      .subscribe();
+        }
+      });
 
     channelRef.current = channel;
 
     return () => {
+      channel.untrack();
       supabase.removeChannel(channel);
       channelRef.current = null;
       setCollaborators(new Map());
     };
-  }, [eventId, userId, enabled]);
+  }, [eventId, userId, userName, enabled]);
 
   /** Notify others that we saved specific field groups. */
   const broadcast = useCallback(
@@ -114,14 +128,14 @@ export function useEventRealtime({
     [userId],
   );
 
-  /** Tell others which field we're currently editing (null = blur). */
+  /** Update our focus field in Presence state. */
   const broadcastFocus = useCallback(
     (field: FieldGroup | null) => {
       if (!channelRef.current || !userId) return;
-      channelRef.current.send({
-        type: "broadcast",
-        event: "field-focus",
-        payload: { user_id: userId, name: userName ?? "Someone", field },
+      channelRef.current.track({
+        userId,
+        name: userName ?? "Someone",
+        focusField: field,
       });
     },
     [userId, userName],
