@@ -62,18 +62,24 @@ export interface PublicEventData {
 }
 
 /**
- * Fetch a single published event by ID (server-side).
- * Returns null if the event doesn't exist or isn't published.
+ * Fetch a single event by ID (server-side).
+ * By default only returns published events (safe for public pages).
+ * Pass `requirePublished: false` to fetch any status (for owner/edit checks).
  */
 export async function fetchEventServer(
   eventId: string,
+  { requirePublished = true }: { requirePublished?: boolean } = {},
 ): Promise<PublicEventData | null> {
-  const { data: event, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from("events")
     .select("*, event_locations(*)")
-    .eq("id", eventId)
-    .eq("status", "published")
-    .single();
+    .eq("id", eventId);
+
+  if (requirePublished) {
+    query = query.eq("status", "published");
+  }
+
+  const { data: event, error } = await query.single();
 
   if (error || !event) return null;
 
@@ -162,4 +168,45 @@ export async function getAllPublishedEventIds(): Promise<string[]> {
     .eq("status", "published");
 
   return (data ?? []).map((e) => e.id);
+}
+
+/**
+ * Check whether a user has edit access to an event.
+ * Returns { allowed: true } if the user is the creator or an accepted host.
+ * Returns { allowed: false, reason } otherwise.
+ */
+export async function checkEventEditAccess(
+  eventId: string,
+  userId: string | null,
+): Promise<
+  | { allowed: true; event: PublicEventData }
+  | { allowed: false; reason: "not_authenticated" | "not_found" | "forbidden" }
+> {
+  if (!userId) {
+    return { allowed: false, reason: "not_authenticated" };
+  }
+
+  const event = await fetchEventServer(eventId, { requirePublished: false });
+
+  if (!event) {
+    return { allowed: false, reason: "not_found" };
+  }
+
+  // Creator always has access
+  if (event.creator_profile_id === userId) {
+    return { allowed: true, event };
+  }
+
+  // Accepted/confirmed collaborators have access
+  const isHost = event.hosts.some(
+    (h) =>
+      h.profile_id === userId &&
+      (h.status === "accepted" || h.status === "confirmed"),
+  );
+
+  if (isHost) {
+    return { allowed: true, event };
+  }
+
+  return { allowed: false, reason: "forbidden" };
 }

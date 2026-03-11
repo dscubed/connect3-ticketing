@@ -1,66 +1,31 @@
-"use client";
+import { notFound } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { checkEventEditAccess } from "@/lib/api/fetchEventServer";
+import EditEventClient from "./EditEventClient";
+import Unauthorized from "./Unauthorized";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
-import { toast } from "sonner";
-import EventForm from "@/components/events/EventForm";
-import { fetchEvent, type FetchedEventData } from "@/lib/api/fetchEvent";
-import { useAuthStore } from "@/stores/authStore";
+export default async function EditEventPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
 
-export default function EditEventPage() {
-  const { id } = useParams<{ id: string }>();
-  const router = useRouter();
-  const user = useAuthStore((s) => s.user);
-  const [data, setData] = useState<FetchedEventData | null>(null);
-  const [loading, setLoading] = useState(true);
+  /* ── Server-side auth check ── */
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  useEffect(() => {
-    if (!id) return;
+  const result = await checkEventEditAccess(id, user?.id ?? null);
 
-    fetchEvent(id)
-      .then((result) => {
-        // Verify ownership or accepted collaborator on client side
-        // (The PUT endpoint enforces this server-side too.)
-        if (user && result.creatorProfileId !== user.id) {
-          const isAcceptedHost = result.hostsData.some((h) => h.id === user.id);
-          if (!isAcceptedHost) {
-            toast.error("You don't have permission to edit this event.");
-            router.push("/");
-            return;
-          }
-        }
-        setData(result);
-      })
-      .catch((err) => {
-        console.error("Failed to load event:", err);
-        toast.error("Failed to load event");
-        router.push("/");
-      })
-      .finally(() => setLoading(false));
-  }, [id, user, router]);
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+  if (!result.allowed) {
+    if (result.reason === "not_found") {
+      notFound();
+    }
+    return <Unauthorized reason={result.reason} eventId={id} />;
   }
 
-  if (!data) return null;
-
-  return (
-    <EventForm
-      mode="edit"
-      eventId={id}
-      initialData={data.formData}
-      existingImages={data.existingImages}
-      initialCarouselImages={data.carouselImages}
-      initialHostsData={data.hostsData}
-      initialSections={data.sections}
-      initialStatus={data.status}
-      initialCreatorProfile={data.creatorProfile}
-    />
-  );
+  /* ── Authorized — render the form ── */
+  return <EditEventClient eventId={id} />;
 }
