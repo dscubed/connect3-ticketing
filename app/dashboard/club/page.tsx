@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/stores/authStore";
 import { AdminManagePanel } from "@/components/dashboard/AdminManagePanel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Shield, Users } from "lucide-react";
+import { ArrowLeft, Shield, Users, Loader2 } from "lucide-react";
 
-export default function ClubManagementPage() {
+function ClubManagementContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading: authLoading, isOrganisation } = useAuthStore();
@@ -82,7 +82,7 @@ export default function ClubManagementPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
+    <>
       {/* Header */}
       <div className="mb-6 flex items-center gap-3">
         <Button
@@ -135,6 +135,22 @@ export default function ClubManagementPage() {
           </div>
         </TabsContent>
       </Tabs>
+    </>
+  );
+}
+
+export default function ClubManagementPage() {
+  return (
+    <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
+      <Suspense
+        fallback={
+          <div className="flex justify-center py-16">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        }
+      >
+        <ClubManagementContent />
+      </Suspense>
     </div>
   );
 }
