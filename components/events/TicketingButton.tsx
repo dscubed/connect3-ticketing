@@ -106,7 +106,8 @@ export function TicketingButton({
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 sm:bottom-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2">
       <Tooltip>
-        <TooltipTrigger className="w-full">
+        <TooltipTrigger asChild>
+          <div className="w-full">
           {/* Mobile: full-width footer bar */}
           <div
             className={cn(
@@ -154,8 +155,9 @@ export function TicketingButton({
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : label}
             </Button>
           </div>
+          </div>
         </TooltipTrigger>
-        <TooltipContent sideOffset={4}>{tooltip}</TooltipContent>
+        {tooltip && <TooltipContent sideOffset={4}>{tooltip}</TooltipContent>}
       </Tooltip>
     </div>
   );

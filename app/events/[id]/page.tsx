@@ -1,24 +1,11 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { format } from "date-fns";
-import {
-  Calendar,
-  MapPin,
-  Globe,
-  Tag,
-  Ticket,
-  ExternalLink,
-} from "lucide-react";
-import Image from "next/image";
-
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import {
   fetchEventServer,
   getAllPublishedEventIds,
 } from "@/lib/api/fetchEventServer";
 import { TicketingButton } from "@/components/events/TicketingButton";
+import { ServerEventPreviewDisplay } from "@/components/events/preview/ServerEventPreviewDisplay";
 import type { ThemeAccent } from "@/components/events/shared/types";
 
 /* ── Static generation ─────────────────────────────────────────── */
@@ -104,8 +91,10 @@ export async function generateMetadata({
 function EventJsonLd({
   event,
 }: {
-  event: NonNullable<Awaited<ReturnType<typeof fetchEventServer>>>;
+  event: Awaited<ReturnType<typeof fetchEventServer>>;
 }) {
+  if (!event) return null;
+
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "Event",
@@ -191,286 +180,17 @@ export default async function EventPage({
 
   if (!event) notFound();
 
-  const startDate = event.start ? new Date(event.start) : null;
-  const endDate = event.end ? new Date(event.end) : null;
-
-  const isFree =
-    event.ticket_tiers.length === 0 ||
-    event.ticket_tiers.every((t) => t.price === 0);
-
-  const displayHosts = event.hosts.filter(
-    (h) => (h.status === "accepted" || h.status === "pending") && h.profiles,
-  );
-
   return (
     <>
       <EventJsonLd event={event} />
-
-      <article className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
-        {/* ── Hero image ── */}
-        {event.images.length > 0 && (
-          <div className="relative mb-8 aspect-2/1 w-full overflow-hidden rounded-2xl">
-            <Image
-              src={event.images[0].url}
-              alt={event.name ?? "Event image"}
-              fill
-              priority
-              className="object-cover"
-              sizes="(max-width: 768px) 100vw, 768px"
-            />
-          </div>
-        )}
-
-        {/* ── Title ── */}
-        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-          {event.name ?? "Untitled Event"}
-        </h1>
-
-        {/* ── Category & tags ── */}
-        {(event.category || (event.tags && event.tags.length > 0)) && (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {event.category && (
-              <Badge variant="secondary" className="gap-1">
-                <Tag className="h-3 w-3" />
-                {event.category}
-              </Badge>
-            )}
-            {event.tags?.map((tag) => (
-              <Badge key={tag} variant="outline">
-                {tag}
-              </Badge>
-            ))}
-          </div>
-        )}
-
-        {/* ── Key details ── */}
-        <div className="mt-6 space-y-3 text-muted-foreground">
-          {/* Date & time */}
-          {startDate && (
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 shrink-0" />
-              <span>
-                {format(startDate, "EEEE, MMMM d, yyyy · h:mm a")}
-                {endDate && ` – ${format(endDate, "h:mm a")}`}
-              </span>
-            </div>
-          )}
-
-          {/* Location */}
-          {event.is_online ? (
-            <div className="flex items-center gap-2">
-              <Globe className="h-4 w-4 shrink-0" />
-              <span>Online event</span>
-            </div>
-          ) : event.location?.venue ? (
-            <div className="flex items-center gap-2">
-              <MapPin className="h-4 w-4 shrink-0" />
-              <span>
-                {event.location.venue}
-                {event.location.address && ` · ${event.location.address}`}
-              </span>
-            </div>
-          ) : null}
-
-          {/* Pricing */}
-          <div className="flex items-center gap-2">
-            <Ticket className="h-4 w-4 shrink-0" />
-            {isFree ? (
-              <span className="font-medium text-green-600">Free</span>
-            ) : (
-              <span>
-                From $
-                {Math.min(...event.ticket_tiers.map((t) => t.price)).toFixed(2)}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <Separator className="my-8" />
-
-        {/* ── Organiser / hosts ── */}
-        <section>
-          <h2 className="mb-4 text-lg font-semibold">Hosted by</h2>
-          <div className="flex flex-wrap gap-4">
-            {event.creator_profile && (
-              <div className="flex items-center gap-2">
-                {event.creator_profile.avatar_url ? (
-                  <Image
-                    src={event.creator_profile.avatar_url}
-                    alt={event.creator_profile.first_name}
-                    width={32}
-                    height={32}
-                    className="rounded-full"
-                  />
-                ) : (
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                    {event.creator_profile.first_name.charAt(0)}
-                  </div>
-                )}
-                <span className="text-sm font-medium">
-                  {event.creator_profile.first_name}
-                </span>
-              </div>
-            )}
-            {displayHosts.map((h) => (
-              <div key={h.profile_id} className="flex items-center gap-2">
-                {h.profiles?.avatar_url ? (
-                  <Image
-                    src={h.profiles.avatar_url}
-                    alt={h.profiles.first_name}
-                    width={32}
-                    height={32}
-                    className="rounded-full"
-                  />
-                ) : (
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                    {h.profiles?.first_name.charAt(0)}
-                  </div>
-                )}
-                <span className="text-sm font-medium">
-                  {h.profiles?.first_name}
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* ── Description ── */}
-        {event.description && (
-          <>
-            <Separator className="my-8" />
-            <section>
-              <h2 className="mb-4 text-lg font-semibold">About this event</h2>
-              <div className="prose prose-neutral max-w-none whitespace-pre-wrap text-muted-foreground">
-                {event.description}
-              </div>
-            </section>
-          </>
-        )}
-
-        {/* ── Sections (FAQ, What to Bring, etc.) ── */}
-        {event.sections.length > 0 && (
-          <>
-            <Separator className="my-8" />
-            {event.sections.map((section) => (
-              <Card key={section.id} className="mb-4 p-6">
-                <h3 className="mb-2 text-base font-semibold capitalize">
-                  {section.type.replace(/_/g, " ")}
-                </h3>
-                {section.type === "faq" &&
-                  Array.isArray(
-                    (section.data as { items?: unknown[] })?.items,
-                  ) && (
-                    <dl className="space-y-3">
-                      {(
-                        section.data as { items: { q: string; a: string }[] }
-                      ).items.map((item, i) => (
-                        <div key={i}>
-                          <dt className="font-medium">{item.q}</dt>
-                          <dd className="mt-1 text-sm text-muted-foreground">
-                            {item.a}
-                          </dd>
-                        </div>
-                      ))}
-                    </dl>
-                  )}
-                {section.type === "what_to_bring" &&
-                  Array.isArray(
-                    (section.data as { items?: unknown[] })?.items,
-                  ) && (
-                    <ul className="list-inside list-disc space-y-1 text-sm text-muted-foreground">
-                      {(section.data as { items: string[] }).items.map(
-                        (item, i) => (
-                          <li key={i}>{item}</li>
-                        ),
-                      )}
-                    </ul>
-                  )}
-              </Card>
-            ))}
-          </>
-        )}
-
-        {/* ── Pricing tiers ── */}
-        {event.ticket_tiers.length > 0 && (
-          <>
-            <Separator className="my-8" />
-            <section>
-              <h2 className="mb-4 text-lg font-semibold">Tickets</h2>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {event.ticket_tiers.map((tier) => (
-                  <Card
-                    key={tier.id}
-                    className="flex items-center justify-between p-4"
-                  >
-                    <span className="font-medium">{tier.label}</span>
-                    <span className="text-lg font-semibold">
-                      {tier.price === 0 ? "Free" : `$${tier.price.toFixed(2)}`}
-                    </span>
-                  </Card>
-                ))}
-              </div>
-            </section>
-          </>
-        )}
-
-        {/* ── Links ── */}
-        {event.links.length > 0 && (
-          <>
-            <Separator className="my-8" />
-            <section>
-              <h2 className="mb-4 text-lg font-semibold">Links</h2>
-              <div className="space-y-2">
-                {event.links.map((link) => (
-                  <a
-                    key={link.id}
-                    href={link.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-sm text-blue-600 hover:underline dark:text-blue-400"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    {link.title || link.url}
-                  </a>
-                ))}
-              </div>
-            </section>
-          </>
-        )}
-
-        {/* ── Gallery (remaining images) ── */}
-        {event.images.length > 1 && (
-          <>
-            <Separator className="my-8" />
-            <section>
-              <h2 className="mb-4 text-lg font-semibold">Gallery</h2>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {event.images.slice(1).map((img) => (
-                  <div
-                    key={img.id}
-                    className="relative aspect-square overflow-hidden rounded-xl"
-                  >
-                    <Image
-                      src={img.url}
-                      alt={event.name ?? "Event image"}
-                      fill
-                      className="object-cover"
-                      sizes="(max-width: 768px) 50vw, 33vw"
-                    />
-                  </div>
-                ))}
-              </div>
-            </section>
-          </>
-        )}
-      </article>
-
+      <ServerEventPreviewDisplay event={event} />
       {/* Sticky ticketing button (preview mode — only shows if ticketing is enabled) */}
       <TicketingButton
         eventId={id}
         mode="preview"
         accent={(event.theme?.accent as ThemeAccent) ?? "none"}
         accentCustom={event.theme?.accent_custom ?? undefined}
+        isDark={event.theme?.mode === "dark"}
       />
     </>
   );

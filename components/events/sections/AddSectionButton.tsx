@@ -19,7 +19,7 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { SECTION_TYPES, SECTION_META, type SectionType } from "./types";
 
-const ICON_MAP: Record<SectionType, React.ElementType> = {
+export const SECTION_ICON_MAP: Record<SectionType, React.ElementType> = {
   faq: HelpCircle,
   "refund-policy": ReceiptText,
   "what-to-bring": Backpack,
@@ -83,7 +83,7 @@ export function AddSectionButton({
       >
         {SECTION_TYPES.map((type) => {
           const meta = SECTION_META[type];
-          const Icon = ICON_MAP[type];
+          const Icon = SECTION_ICON_MAP[type];
           const alreadyAdded = activeSections.includes(type);
 
           return (
