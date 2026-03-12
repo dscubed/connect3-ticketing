@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuthStore } from "@/stores/authStore";
 import Image from "next/image";
+import { formatDateTimestamp } from "../shared/utils";
 
 /* ── Types ── */
 
@@ -54,18 +55,6 @@ interface SlugProfile {
   first_name: string;
   avatar_url: string | null;
   slug: string;
-}
-
-/* ── Helpers ── */
-
-function formatDate(ts: number | null): string {
-  if (!ts) return "";
-  const d = new Date(ts * 1000);
-  return d.toLocaleDateString("en-AU", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
 }
 
 /* ── Post row sub-component ── */
@@ -190,7 +179,7 @@ function PostRow({
           {post.timestamp && (
             <span className="flex items-center gap-1">
               <Calendar className="h-3 w-3" />
-              {formatDate(post.timestamp)}
+              {formatDateTimestamp(post.timestamp)}
             </span>
           )}
           {post.location && (

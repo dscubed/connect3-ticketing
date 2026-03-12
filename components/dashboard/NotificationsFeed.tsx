@@ -24,6 +24,7 @@ import {
   Shield,
   XCircle,
 } from "lucide-react";
+import { formatDateTBA } from "../shared/utils";
 
 /* ── Types ── */
 
@@ -195,15 +196,6 @@ export function NotificationsFeed({ mode }: NotificationsFeedProps) {
     }
   };
 
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return "TBA";
-    return new Date(dateStr).toLocaleDateString("en-AU", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  };
-
   const isLoading =
     (collabLoading && !hasFetchedCollab.current) ||
     (adminLoading && !hasFetchedAdmin.current);
@@ -343,7 +335,7 @@ export function NotificationsFeed({ mode }: NotificationsFeedProps) {
                 </p>
                 <p className="flex items-center gap-1 text-xs text-muted-foreground">
                   <CalendarDays className="h-3 w-3" />
-                  {formatDate(event.start)}
+                  {formatDateTBA(event.start)}
                   {event.is_online ? (
                     <span className="ml-1.5 flex items-center gap-0.5">
                       <Globe className="h-3 w-3" /> Online

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { getClubAdminRow, getAdminClubIds } from "@/lib/auth/clubAdmin";
+import { getClubAdminRow } from "@/lib/auth/clubAdmin";
+import type { EventCardDetails, AvatarProfile } from "@/lib/types/events";
 
 /* ── Types matching the JSON payload ── */
 
@@ -29,6 +30,65 @@ interface LocationPayload {
 interface SectionPayload {
   type: string;
   data: unknown;
+}
+
+/* ── Helper: Fetch collaborators for an event ── */
+async function getEventCollaborators(
+  eventId: string,
+): Promise<AvatarProfile[] | null> {
+  const { data, error } = await supabaseAdmin
+    .from("event_hosts")
+    .select("profile:profile_id(id, first_name, avatar_url)")
+    .eq("event_id", eventId)
+    .eq("status", "accepted");
+
+  if (error) {
+    console.error("Failed to fetch collaborators for event", eventId, error);
+    return null;
+  }
+
+  if (!data || data.length === 0) {
+    return null;
+  }
+
+  return data
+    .map((row) => {
+      const p = row.profile as unknown as AvatarProfile | null;
+      if (!p) return null;
+      return { id: p.id, first_name: p.first_name, avatar_url: p.avatar_url };
+    })
+    .filter((p): p is AvatarProfile => p !== null);
+}
+
+/* ── Helper: Transform raw event row to EventCardDetails ── */
+async function transformToEventCardDetails(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  event: any,
+): Promise<EventCardDetails> {
+  const collaborators = await getEventCollaborators(event.id);
+
+  // Supabase FK join: profiles is returned as a single object for to-one relations
+  const profile = event.profiles as unknown as AvatarProfile;
+
+  // Supabase FK join: location is returned as a single object for to-one relations
+  const location = event.event_locations as unknown as { venue: string } | null;
+
+  return {
+    id: event.id,
+    name: event.name,
+    start: event.start,
+    thumbnail: event.thumbnail,
+    is_online: event.is_online,
+    status: event.status,
+    category: event.category,
+    location_name: location?.venue ?? null,
+    host: {
+      id: profile.id,
+      first_name: profile.first_name,
+      avatar_url: profile.avatar_url,
+    },
+    collaborators,
+  };
 }
 
 /* ================================================================
@@ -88,7 +148,7 @@ export async function GET(request: NextRequest) {
       const { data, error } = await supabaseAdmin
         .from("events")
         .select(
-          "id, name, description, start, end, thumbnail, is_online, capacity, category, published_at, status, created_at, creator_profile_id",
+          "id, name, start, thumbnail, is_online, category, status, profiles!creator_profile_id(id, first_name, avatar_url), event_locations(venue)",
         )
         .in("id", recentIds);
 
@@ -97,13 +157,18 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
 
-      // Preserve recent order
+      // Preserve recent order and transform
       const byId = new Map((data ?? []).map((e) => [e.id, e]));
       const ordered = recentIds
         .filter((id) => byId.has(id))
         .map((id) => byId.get(id)!);
 
-      return NextResponse.json({ data: ordered });
+      // Transform to EventCardDetails format
+      const transformed = await Promise.all(
+        ordered.map((event) => transformToEventCardDetails(event)),
+      );
+
+      return NextResponse.json({ data: transformed });
     }
 
     /* ── Mode 1: Club admin fetching a specific club's events ── */
@@ -167,7 +232,7 @@ export async function GET(request: NextRequest) {
         const { data, error } = await supabaseAdmin
           .from("events")
           .select(
-            "id, name, description, start, end, thumbnail, is_online, capacity, category, published_at, status, created_at, creator_profile_id",
+            "id, name, start, thumbnail, is_online, category, status, profiles!creator_profile_id(id, first_name, avatar_url), event_locations(venue)",
           )
           .in("id", recentIds)
           .or(clubEventFilter);
@@ -184,7 +249,10 @@ export async function GET(request: NextRequest) {
           .map((id) => byId.get(id)!)
           .slice(0, limit);
 
-        return NextResponse.json({ data: ordered });
+        const transformed = await Promise.all(
+          ordered.map((event) => transformToEventCardDetails(event)),
+        );
+        return NextResponse.json({ data: transformed });
       }
 
       /* ── Sub-mode: fetch specific event IDs ── */
@@ -208,7 +276,7 @@ export async function GET(request: NextRequest) {
         const { data, error } = await supabaseAdmin
           .from("events")
           .select(
-            "id, name, description, start, end, thumbnail, is_online, capacity, category, published_at, status, created_at, creator_profile_id",
+            "id, name, start, thumbnail, is_online, category, status, profiles!creator_profile_id(id, first_name, avatar_url), event_locations(venue)",
           )
           .in("id", requestedIds)
           .or(clubEventFilter);
@@ -224,7 +292,10 @@ export async function GET(request: NextRequest) {
           .filter((id) => byId.has(id))
           .map((id) => byId.get(id)!);
 
-        return NextResponse.json({ data: ordered });
+        const transformed = await Promise.all(
+          ordered.map((event) => transformToEventCardDetails(event)),
+        );
+        return NextResponse.json({ data: transformed });
       }
 
       /* ── Sub-mode: paginated list ── */
@@ -232,7 +303,7 @@ export async function GET(request: NextRequest) {
       let query = supabaseAdmin
         .from("events")
         .select(
-          "id, name, description, start, end, thumbnail, is_online, capacity, category, published_at, status, created_at, creator_profile_id",
+          "id, name, start, thumbnail, is_online, category, status, created_at, profiles!creator_profile_id(id, first_name, avatar_url), event_locations(venue)",
         )
         .or(
           collabEventIds.length > 0
@@ -254,7 +325,11 @@ export async function GET(request: NextRequest) {
       const hasMore = (data?.length ?? 0) > limit;
       const items = hasMore ? data!.slice(0, limit) : (data ?? []);
       const nextCursor = hasMore ? items[items.length - 1].created_at : null;
-      return NextResponse.json({ data: items, hasMore, nextCursor });
+
+      const transformed = await Promise.all(
+        items.map((event) => transformToEventCardDetails(event)),
+      );
+      return NextResponse.json({ data: transformed, hasMore, nextCursor });
     }
 
     /* ── Mode 2: Original — creator_id based ── */
@@ -276,7 +351,7 @@ export async function GET(request: NextRequest) {
     let query = supabaseAdmin
       .from("events")
       .select(
-        "id, name, description, start, end, thumbnail, is_online, capacity, category, published_at, status, created_at, creator_profile_id",
+        "id, name, start, thumbnail, is_online, category, status, created_at, profiles!creator_profile_id(id, first_name, avatar_url), event_locations(venue)",
       )
       .or(
         collabEventIds.length > 0
@@ -305,7 +380,10 @@ export async function GET(request: NextRequest) {
     const items = hasMore ? data!.slice(0, limit) : (data ?? []);
     const nextCursor = hasMore ? items[items.length - 1].created_at : null;
 
-    return NextResponse.json({ data: items, hasMore, nextCursor });
+    const transformed = await Promise.all(
+      items.map((event) => transformToEventCardDetails(event)),
+    );
+    return NextResponse.json({ data: transformed, hasMore, nextCursor });
   } catch (error) {
     console.error("Events route error:", error);
     return NextResponse.json(
@@ -347,7 +425,6 @@ export async function POST(request: NextRequest) {
     const isOnline: boolean = body.isOnline ?? false;
     const category: string | null = body.category || null;
     const tags: string[] = body.tags ?? [];
-    const hostIds: string[] = body.hostIds ?? [];
     const pricing: TicketTierPayload[] = body.pricing ?? [];
     const links: EventLinkPayload[] = body.links ?? [];
     const theme: ThemePayload | null = body.theme ?? null;

@@ -27,24 +27,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { EventDisplayCard } from "./EventDisplayCard";
-
-/* ── Types ── */
-
-interface Event {
-  id: string;
-  name: string | null;
-  description: string | null;
-  start: string | null;
-  end: string | null;
-  thumbnail: string | null;
-  is_online: boolean;
-  capacity: number | null;
-  category: string | null;
-  status: string;
-  published_at: string | null;
-  created_at: string;
-  creator_profile_id: string;
-}
+import type { EventCardDetails } from "@/lib/types/events";
 
 type EventTab = "all" | "published" | "draft";
 
@@ -62,7 +45,7 @@ export function ClubEventsSection({
   clubName,
 }: ClubEventsSectionProps) {
   const router = useRouter();
-  const [events, setEvents] = useState<Event[]>([]);
+  const [events, setEvents] = useState<EventCardDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
@@ -100,7 +83,7 @@ export function ClubEventsSection({
         if (!res.ok) throw new Error("Failed to fetch events");
 
         const json = await res.json();
-        const items: Event[] = json.data ?? [];
+        const items: EventCardDetails[] = json.data ?? [];
         setHasMore(json.hasMore ?? false);
         cursorRef.current = json.nextCursor ?? null;
 

@@ -1,4 +1,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import type { AvatarProfile } from "@/lib/types/events";
+
+export type { AvatarProfile } from "@/lib/types/events";
 
 interface AvatarStackProps {
   /** List of profiles to display as avatars */
@@ -7,12 +10,6 @@ interface AvatarStackProps {
   limit?: number;
   /** Size of each avatar */
   size?: "sm" | "md" | "lg";
-}
-
-export interface AvatarProfile {
-  id: string;
-  first_name: string;
-  avatar_url: string | null;
 }
 
 const sizeMap = {

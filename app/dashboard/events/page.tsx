@@ -38,22 +38,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { EventDisplayCard } from "@/components/dashboard/EventDisplayCard";
-
-interface Event {
-  id: string;
-  name: string | null;
-  description: string | null;
-  start: string | null;
-  end: string | null;
-  thumbnail: string | null;
-  is_online: boolean;
-  capacity: number | null;
-  category: string | null;
-  status: string;
-  published_at: string | null;
-  created_at: string;
-  creator_profile_id: string;
-}
+import type { EventCardDetails } from "@/lib/types/events";
 
 interface ClubOption {
   club_id: string;
@@ -70,7 +55,7 @@ export default function DashboardEventsPage() {
   const searchParams = useSearchParams();
   const initialClubId = searchParams.get("club_id");
   const { user, loading: authLoading, isOrganisation } = useAuthStore();
-  const [events, setEvents] = useState<Event[]>([]);
+  const [events, setEvents] = useState<EventCardDetails[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const hasFetchedOnce = useRef(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -167,7 +152,7 @@ export default function DashboardEventsPage() {
         if (!res.ok) throw new Error("Failed to fetch events");
 
         const json = await res.json();
-        const items: Event[] = json.data ?? [];
+        const items: EventCardDetails[] = json.data ?? [];
         setHasMore(json.hasMore ?? false);
         cursorRef.current = json.nextCursor ?? null;
 
@@ -371,7 +356,7 @@ export default function DashboardEventsPage() {
                       <Ticket className="h-4 w-4" />
                       Ticketing
                     </Button>
-                    {user && event.creator_profile_id === user.id && (
+                    {user && event.host.id === user.id && (
                       <Button
                         variant="outline"
                         size="icon"

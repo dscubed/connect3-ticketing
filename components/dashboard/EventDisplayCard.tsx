@@ -1,6 +1,6 @@
 "use client";
 
-import { EventCardDetails } from "@/lib/types/events";
+import { EventCardDetails } from "../shared/utils";
 import {
   Card,
   CardHeader,
@@ -9,9 +9,12 @@ import {
   CardContent,
 } from "../ui/card";
 import { Badge } from "../ui/badge";
-import { CalendarDays, Globe, MapPin } from "lucide-react";
+import { CalendarDays, MapPin } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { formatDateTBA } from "../shared/utils";
+import { AvatarStack } from "../shared/AvatarStack";
+import { Separator } from "../ui/separator";
 
 export function EventDisplayCard({
   event,
@@ -21,14 +24,6 @@ export function EventDisplayCard({
   content?: React.ReactNode;
 }) {
   const router = useRouter();
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return "TBA";
-    return new Date(dateStr).toLocaleDateString("en-AU", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  };
   return (
     <Card
       key={event.id}
@@ -64,18 +59,29 @@ export function EventDisplayCard({
             )}
           </div>
         </div>
-        <CardDescription className="flex items-center gap-1 text-[11px]">
-          <CalendarDays className="h-3 w-3" />
-          {formatDate(event.start)}
-          {event.is_online ? (
-            <span className="ml-1.5 flex items-center gap-0.5">
-              <Globe className="h-3 w-3" /> Online
-            </span>
-          ) : (
-            <span className="ml-1.5 flex items-center gap-0.5">
-              <MapPin className="h-3 w-3" /> In-person
-            </span>
-          )}
+        <CardDescription className="flex flex-col gap-2 text-[11px] min-w-0">
+          <span className="flex items-center gap-1 min-w-0">
+            <AvatarStack
+              profiles={[event.host, ...(event.collaborators || [])]}
+              size="sm"
+            />
+            <span className="truncate">{event.host.first_name}</span>
+            {event.collaborators && event.collaborators.length > 0
+              ? ` +${event.collaborators.length}`
+              : ""}
+          </span>
+
+          <span className="flex items-center gap-1 min-w-0">
+            <div className="flex items-center gap-2 shrink-0">
+              <CalendarDays className="h-3 w-3 shrink-0" />
+              <span>{formatDateTBA(event.start)}</span>
+            </div>
+            <Separator orientation="vertical" className="h-4! shrink-0 mx-2" />
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <MapPin className="h-3 w-3 shrink-0" />
+              <span className="truncate">{event.location_name || "TBA"}</span>
+            </div>
+          </span>
         </CardDescription>
       </CardHeader>
       {content && <CardContent className="pt-0"> {content} </CardContent>}

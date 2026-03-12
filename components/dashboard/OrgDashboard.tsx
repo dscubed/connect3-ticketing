@@ -12,22 +12,7 @@ import { NotificationsFeed } from "@/components/dashboard/NotificationsFeed";
 import { Separator } from "@/components/ui/separator";
 import { ArrowRight, CalendarDays, Loader2, Plus, Users } from "lucide-react";
 import { EventDisplayCard } from "./EventDisplayCard";
-
-interface Event {
-  id: string;
-  name: string | null;
-  description: string | null;
-  start: string | null;
-  end: string | null;
-  thumbnail: string | null;
-  is_online: boolean;
-  capacity: number | null;
-  category: string | null;
-  status: string;
-  published_at: string | null;
-  created_at: string;
-  creator_profile_id: string;
-}
+import type { EventCardDetails } from "@/lib/types/events";
 
 interface AdminPreview {
   id: string;
@@ -46,7 +31,7 @@ const ADMIN_PREVIEW_COUNT = 5;
 export function OrgDashboard() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const [events, setEvents] = useState<Event[]>([]);
+  const [events, setEvents] = useState<EventCardDetails[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const hasFetchedOnce = useRef(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
