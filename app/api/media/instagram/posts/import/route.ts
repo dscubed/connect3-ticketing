@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { resolveManagedProfileId } from "@/lib/auth/clubAdmin";
 
 const BUCKET = "media";
 
@@ -29,11 +30,22 @@ export async function POST(request: NextRequest) {
     /* ── Parse body ── */
     const body = await request.json();
     const postId: string | undefined = body.postId;
+    const requestedClubId =
+      typeof body.clubId === "string" ? body.clubId : undefined;
     if (!postId) {
       return NextResponse.json(
         { error: "postId is required" },
         { status: 400 },
       );
+    }
+
+    const creatorProfileId = await resolveManagedProfileId(
+      requestedClubId,
+      user.id,
+    );
+
+    if (requestedClubId && !creatorProfileId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     /* ── Check if already imported (event ID = post ID) ── */
@@ -100,8 +112,33 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    /* ── Determine the event creator (the post owner) ── */
-    const ownerProfileId = slugToProfileId[post.posted_by] ?? user.id;
+    const { data: creatorFetches, error: creatorFetchesError } =
+      await supabaseAdmin
+        .from("instagram_club_fetches")
+        .select("instagram_slug")
+        .eq("profile_id", creatorProfileId);
+
+    if (creatorFetchesError) {
+      return NextResponse.json(
+        { error: creatorFetchesError.message },
+        { status: 500 },
+      );
+    }
+
+    const creatorSlugs = (creatorFetches ?? []).map(
+      (row) => row.instagram_slug,
+    );
+    const hasAccessToPost = creatorSlugs.some(
+      (slug) =>
+        slug === post.posted_by || (post.collaborators ?? []).includes(slug),
+    );
+
+    if (!hasAccessToPost) {
+      return NextResponse.json(
+        { error: "Selected club cannot import this Instagram post" },
+        { status: 403 },
+      );
+    }
 
     /* ── Build collaborator profiles list (everyone except the owner) ── */
     const collaboratorProfiles: {
@@ -113,9 +150,8 @@ export async function POST(request: NextRequest) {
     const hostProfileIds: string[] = [];
 
     for (const slug of everySlug) {
-      if (slug === post.posted_by) continue; // skip the owner
       const pid = slugToProfileId[slug];
-      if (!pid) continue;
+      if (!pid || pid === creatorProfileId) continue;
       const prof = profileMap.get(pid);
       if (prof) {
         collaboratorProfiles.push({
@@ -126,12 +162,6 @@ export async function POST(request: NextRequest) {
         });
         hostProfileIds.push(prof.id);
       }
-    }
-
-    // If the authenticated user is a collaborator (not the poster),
-    // they should also appear as a host on the event.
-    if (ownerProfileId !== user.id && !hostProfileIds.includes(user.id)) {
-      hostProfileIds.push(user.id);
     }
 
     /* ── Duplicate images to event storage ── */
@@ -149,7 +179,7 @@ export async function POST(request: NextRequest) {
         const contentType = imgRes.headers.get("content-type") || "image/jpeg";
         const ext = contentType.includes("png") ? "png" : "jpg";
         const uniqueName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-        const storagePath = `${ownerProfileId}/events/${eventId}/images/${uniqueName}`;
+        const storagePath = `${creatorProfileId}/events/${eventId}/images/${uniqueName}`;
 
         const arrayBuffer = await imgRes.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
@@ -185,7 +215,7 @@ export async function POST(request: NextRequest) {
       description: post.caption || null,
       start: null,
       end: null,
-      creator_profile_id: ownerProfileId,
+      creator_profile_id: creatorProfileId,
       status: "draft",
       published_at: null,
       is_online: false,
@@ -214,7 +244,7 @@ export async function POST(request: NextRequest) {
 
     /* ── Insert hosts (collaborators + current user if not owner) ── */
     const uniqueHostIds = [...new Set(hostProfileIds)].filter(
-      (id) => id !== ownerProfileId,
+      (id) => id !== creatorProfileId,
     );
     if (uniqueHostIds.length > 0) {
       const rows = uniqueHostIds.map((pid, i) => ({

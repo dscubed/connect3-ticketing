@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { nanoid } from "nanoid";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { resolveManagedProfileId } from "@/lib/auth/clubAdmin";
 
 /**
  * /events/create — creates a bare draft event and redirects to the editor.
@@ -36,21 +37,10 @@ export default async function CreateEventPage({
   const clubId =
     typeof params.club_id === "string" ? params.club_id : undefined;
 
-  /* ── If club_id provided, verify user is an accepted admin ── */
-  let creatorProfileId = user.id;
-  if (clubId) {
-    const { data: adminRow } = await supabaseAdmin
-      .from("club_admins")
-      .select("id")
-      .eq("club_id", clubId)
-      .eq("user_id", user.id)
-      .eq("status", "accepted")
-      .maybeSingle();
-
-    if (adminRow) {
-      creatorProfileId = clubId;
-    }
-    // If not a valid admin, fall back to creating under own profile
+  /* ── If club_id provided, verify user can create on behalf of that profile ── */
+  const creatorProfileId = await resolveManagedProfileId(clubId, user.id);
+  if (clubId && !creatorProfileId) {
+    redirect("/dashboard/events");
   }
 
   /* ── Create a minimal draft row ── */

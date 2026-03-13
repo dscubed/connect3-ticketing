@@ -378,7 +378,8 @@ export function CreateEventModal({
   const fetchPosts = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/media/instagram/posts");
+      const query = clubId ? `?club_id=${encodeURIComponent(clubId)}` : "";
+      const res = await fetch(`/api/media/instagram/posts${query}`);
       const json = await res.json();
       if (res.ok) {
         const fetchedPosts: InstagramPost[] = json.data ?? [];
@@ -408,7 +409,7 @@ export function CreateEventModal({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [clubId]);
 
   const handleInstagramClick = () => {
     setView("instagram");

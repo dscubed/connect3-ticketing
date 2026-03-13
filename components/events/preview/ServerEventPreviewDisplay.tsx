@@ -35,6 +35,7 @@ import {
   type SectionType,
 } from "../sections/types";
 import { cn } from "@/lib/utils";
+import { splitUtcTimestampInTimeZone } from "@/lib/utils/timezone";
 import { SECTION_ICON_MAP } from "../sections/AddSectionButton";
 
 interface ServerEventPreviewDisplayProps {
@@ -92,15 +93,21 @@ export function ServerEventPreviewDisplay({
   );
   const pageTextClass = isDark ? "text-neutral-200" : "text-foreground";
 
+  const eventTimeZone = event.timezone ?? "Australia/Sydney";
+  const startParts = event.start
+    ? splitUtcTimestampInTimeZone(event.start, eventTimeZone)
+    : null;
+  const endParts = event.end
+    ? splitUtcTimestampInTimeZone(event.end, eventTimeZone)
+    : null;
+
   /* Build preview props from server data */
   const dateTimeData: DateTimeData = {
-    startDate: event.start ? event.start.split("T")[0] : "",
-    startTime: event.start
-      ? (event.start.split("T")[1]?.slice(0, 5) ?? "")
-      : "",
-    endDate: event.end ? event.end.split("T")[0] : "",
-    endTime: event.end ? (event.end.split("T")[1]?.slice(0, 5) ?? "") : "",
-    timezone: event.timezone ?? "Australia/Sydney",
+    startDate: startParts?.date ?? "",
+    startTime: startParts?.time ?? "",
+    endDate: endParts?.date ?? "",
+    endTime: endParts?.time ?? "",
+    timezone: eventTimeZone,
   };
 
   const locationData: LocationData | null = event.is_online

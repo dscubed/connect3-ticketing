@@ -27,6 +27,22 @@ export async function getClubAdminRow(clubId: string, userId: string) {
   return data;
 }
 
+export async function resolveManagedProfileId(
+  requestedProfileId: string | null | undefined,
+  userId: string,
+): Promise<string | null> {
+  if (!requestedProfileId) {
+    return userId;
+  }
+
+  if (requestedProfileId === userId) {
+    return requestedProfileId;
+  }
+
+  const adminRow = await getClubAdminRow(requestedProfileId, userId);
+  return adminRow ? requestedProfileId : null;
+}
+
 /**
  * Check if a user has permission to manage an event.
  * Returns:

@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getClubAdminRow } from "@/lib/auth/clubAdmin";
 import type { EventCardDetails, AvatarProfile } from "@/lib/types/events";
+import { buildUtcTimestamp } from "@/lib/utils/timezone";
 
 /* ── Types matching the JSON payload ── */
 
@@ -447,14 +448,8 @@ export async function POST(request: NextRequest) {
     }
 
     /* ── Build start / end timestamps ── */
-    const startTs =
-      startDate && startTime
-        ? new Date(`${startDate}T${startTime}`).toISOString()
-        : null;
-    const endTs =
-      endDate && endTime
-        ? new Date(`${endDate}T${endTime}`).toISOString()
-        : null;
+    const startTs = buildUtcTimestamp(startDate, startTime, timezone);
+    const endTs = buildUtcTimestamp(endDate, endTime, timezone);
 
     /* ── Insert location ── */
     let locationId: string | null = null;

@@ -9,6 +9,7 @@ import type {
 } from "@/components/events/shared/types";
 import { DEFAULT_THEME } from "@/components/events/shared/types";
 import type { SectionData } from "@/components/events/sections/types";
+import { splitUtcTimestampInTimeZone } from "@/lib/utils/timezone";
 
 /* ── Raw shapes from the API ── */
 
@@ -117,16 +118,18 @@ export async function fetchEvent(eventId: string): Promise<FetchedEventData> {
   let startTime = "";
   let endDate = "";
   let endTime = "";
+  const eventTimeZone =
+    data.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   if (data.start) {
-    const d = new Date(data.start);
-    startDate = d.toISOString().slice(0, 10); // YYYY-MM-DD
-    startTime = d.toTimeString().slice(0, 5); // HH:MM
+    const parts = splitUtcTimestampInTimeZone(data.start, eventTimeZone);
+    startDate = parts.date;
+    startTime = parts.time;
   }
   if (data.end) {
-    const d = new Date(data.end);
-    endDate = d.toISOString().slice(0, 10);
-    endTime = d.toTimeString().slice(0, 5);
+    const parts = splitUtcTimestampInTimeZone(data.end, eventTimeZone);
+    endDate = parts.date;
+    endTime = parts.time;
   }
 
   /* ── Location ── */
@@ -218,7 +221,7 @@ export async function fetchEvent(eventId: string): Promise<FetchedEventData> {
     startTime,
     endDate,
     endTime,
-    timezone: data.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    timezone: eventTimeZone,
     location,
     isOnline: data.is_online,
     category: data.category ?? "",

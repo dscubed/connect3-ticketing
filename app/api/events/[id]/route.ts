@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { checkEventPermission } from "@/lib/auth/clubAdmin";
+import { buildUtcTimestamp } from "@/lib/utils/timezone";
 
 /* ── Types ── */
 interface TicketTierPayload {
@@ -193,14 +194,8 @@ export async function PUT(
     }
 
     /* ── Build timestamps ── */
-    const startTs =
-      startDate && startTime
-        ? new Date(`${startDate}T${startTime}`).toISOString()
-        : null;
-    const endTs =
-      endDate && endTime
-        ? new Date(`${endDate}T${endTime}`).toISOString()
-        : null;
+    const startTs = buildUtcTimestamp(startDate, startTime, timezone);
+    const endTs = buildUtcTimestamp(endDate, endTime, timezone);
 
     /* ── Clean up removed carousel images from storage ── */
     const { data: oldImages } = await supabaseAdmin
@@ -431,12 +426,12 @@ export async function PATCH(
       if ("startDate" in body || "startTime" in body) {
         const sd = body.startDate;
         const st = body.startTime;
-        payload.start = sd && st ? new Date(`${sd}T${st}`).toISOString() : null;
+        payload.start = buildUtcTimestamp(sd, st, body.timezone);
       }
       if ("endDate" in body || "endTime" in body) {
         const ed = body.endDate;
         const et = body.endTime;
-        payload.end = ed && et ? new Date(`${ed}T${et}`).toISOString() : null;
+        payload.end = buildUtcTimestamp(ed, et, body.timezone);
       }
       if ("status" in body) {
         payload.status = body.status;

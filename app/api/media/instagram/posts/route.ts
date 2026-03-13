@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { resolveManagedProfileId } from "@/lib/auth/clubAdmin";
 
 /**
  * GET /api/media/instagram/posts
@@ -13,7 +14,7 @@ import { createClient } from "@/lib/supabase/server";
  *
  * Uses the admin client because Instagram tables have no RLS policies.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     /* ── Auth check ── */
     const supabase = await createClient();
@@ -25,11 +26,21 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    /* ── Find the instagram slugs linked to this user's profile ── */
+    const requestedClubId = request.nextUrl.searchParams.get("club_id");
+    const targetProfileId = await resolveManagedProfileId(
+      requestedClubId,
+      user.id,
+    );
+
+    if (requestedClubId && !targetProfileId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    /* ── Find the instagram slugs linked to the selected profile ── */
     const { data: fetches, error: fetchError } = await supabaseAdmin
       .from("instagram_club_fetches")
       .select("instagram_slug")
-      .eq("profile_id", user.id);
+      .eq("profile_id", targetProfileId);
 
     if (fetchError) {
       console.error("Instagram fetches lookup error:", fetchError);
