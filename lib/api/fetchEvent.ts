@@ -33,7 +33,7 @@ interface RawHost {
 
 interface RawTicketTier {
   id: string;
-  type: "general" | "members" | "timed" | "special";
+  member_verification: boolean;
   name: string;
   price: number;
   quantity: number | null;
@@ -83,6 +83,7 @@ interface RawEvent {
   category: string | null;
   tags: string[] | null;
   status: string;
+  url_slug: string | null;
   creator_profile_id: string;
   event_capacity: number | null;
   event_locations: RawLocation | null;
@@ -92,6 +93,7 @@ interface RawEvent {
   links: RawLink[];
   theme: RawTheme | null;
   sections: RawSection[];
+  ticketing: { enabled: boolean } | null;
 }
 
 export interface FetchedEventData {
@@ -102,7 +104,9 @@ export interface FetchedEventData {
   sections: SectionData[];
   creatorProfileId: string;
   creatorProfile?: ClubProfile;
+  urlSlug?: string | null;
   status: "draft" | "published" | "archived";
+  ticketingEnabled: boolean;
 }
 
 /**
@@ -184,7 +188,10 @@ export async function fetchEvent(eventId: string): Promise<FetchedEventData> {
   const pricing: TicketTier[] = data.ticket_tiers.map((t) => ({
     ...(t.offer_start
       ? (() => {
-          const split = splitUtcTimestampInTimeZone(t.offer_start, data.timezone);
+          const split = splitUtcTimestampInTimeZone(
+            t.offer_start,
+            data.timezone,
+          );
           return {
             offerStartDate: split.date,
             offerStartTime: split.time,
@@ -201,8 +208,7 @@ export async function fetchEvent(eventId: string): Promise<FetchedEventData> {
         })()
       : {}),
     id: t.id,
-    // Coerce legacy types ("timed", "special") to "general"
-    type: (t.type === "members" ? "members" : "general") as TicketTier["type"],
+    memberVerification: !!t.member_verification,
     name: t.name,
     price: t.price,
     quantity: t.quantity,
@@ -269,5 +275,7 @@ export async function fetchEvent(eventId: string): Promise<FetchedEventData> {
     creatorProfileId: data.creator_profile_id,
     creatorProfile,
     status: (data.status ?? "draft") as "draft" | "published" | "archived",
+    urlSlug: data.url_slug,
+    ticketingEnabled: !!data.ticketing?.enabled,
   };
 }

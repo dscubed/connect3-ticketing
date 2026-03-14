@@ -71,4 +71,3 @@ export function validateTicketTier(tier: TicketTier): string | null {
 
   return null;
 }
-

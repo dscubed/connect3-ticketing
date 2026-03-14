@@ -12,6 +12,7 @@ import {
 
 /* ── Types matching the JSON payload ── */
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 interface TicketTierPayload extends TicketTierInput {}
 interface EventLinkPayload {
   url: string;
@@ -429,7 +430,19 @@ export async function POST(request: NextRequest) {
     const category: string | null = body.category || null;
     const tags: string[] = body.tags ?? [];
     const pricing: TicketTierPayload[] = body.pricing ?? [];
-    const eventCapacity: number | null = body.eventCapacity ?? null;
+
+    const eventCapacityInput: number | null = body.eventCapacity ?? null;
+    let eventCapacity = eventCapacityInput;
+
+    if (pricing.length > 0) {
+      const sumQuantities = pricing.reduce((sum, tier) => {
+        return sum + (tier.quantity ?? 0);
+      }, 0);
+      if (eventCapacity !== null && sumQuantities > eventCapacity) {
+        eventCapacity = sumQuantities;
+      }
+    }
+
     const links: EventLinkPayload[] = body.links ?? [];
     const theme: ThemePayload | null = body.theme ?? null;
     const location: LocationPayload | null = body.location ?? null;
@@ -536,16 +549,13 @@ export async function POST(request: NextRequest) {
       for (const tier of pricing) {
         const validationError = validateTicketTierInput(tier);
         if (validationError) {
-          return NextResponse.json(
-            { error: validationError },
-            { status: 400 },
-          );
+          return NextResponse.json({ error: validationError }, { status: 400 });
         }
       }
 
       const rows = pricing.map((t, i) => ({
         event_id: eventId,
-        type: t.type,
+        member_verification: t.memberVerification ?? false,
         name: t.name,
         price: t.price,
         quantity: t.quantity ?? null,

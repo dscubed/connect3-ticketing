@@ -55,7 +55,11 @@ export default function EditEventClient({ eventId }: { eventId: string }) {
       initialHostsData={data.hostsData}
       initialSections={data.sections}
       initialStatus={data.status}
+      initialTicketingEnabled={data.ticketingEnabled}
       initialCreatorProfile={data.creatorProfile}
+      initialUrlSlug={data.urlSlug}
     />
   );
 }
+
+

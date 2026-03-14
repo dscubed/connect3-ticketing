@@ -17,14 +17,6 @@ interface TicketOfferWindowFieldsProps {
   }) => void;
 }
 
-function getNowDatetime() {
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-  return { date, time };
-}
-
 /** Compact reusable start/end date-time controls for ticket offer windows. */
 export function TicketOfferWindowFields({
   startDate,
@@ -38,7 +30,10 @@ export function TicketOfferWindowFields({
   const hasEventStart = !!(eventStartDate && eventStartTime);
 
   const handleSetToday = () => {
-    onChange({ startDate: new Date().toISOString().split("T")[0], startTime: "00:00" });
+    onChange({
+      startDate: new Date().toISOString().split("T")[0],
+      startTime: "00:00",
+    });
   };
 
   const handleSetEventStart = () => {

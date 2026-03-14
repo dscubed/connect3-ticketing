@@ -36,7 +36,7 @@ export async function createEvent(
     tags: form.tags,
     hostIds: form.hostIds,
     pricing: form.pricing.map((t) => ({
-      type: t.type,
+      memberVerification: t.memberVerification,
       name: t.name,
       price: t.price,
       quantity: t.quantity ?? null,

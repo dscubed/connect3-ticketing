@@ -62,7 +62,7 @@ function buildPatchBody(
 
   if (groups.includes("pricing")) {
     body.pricing = form.pricing.map((t) => ({
-      type: t.type,
+      memberVerification: t.memberVerification,
       name: t.name,
       price: t.price,
       quantity: t.quantity ?? null,

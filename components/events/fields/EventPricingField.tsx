@@ -13,6 +13,9 @@ interface EventPricingFieldProps {
   eventStartDate?: string;
   eventStartTime?: string;
   onAfterSave?: () => void;
+  modalOpen?: boolean;
+  onModalOpenChange?: (open: boolean) => void;
+  ticketingEnabled: boolean;
 }
 
 export function EventPricingField({
@@ -24,17 +27,23 @@ export function EventPricingField({
   eventStartDate,
   eventStartTime,
   onAfterSave,
+  modalOpen,
+  onModalOpenChange,
+  ticketingEnabled,
 }: EventPricingFieldProps) {
   if (mode === "preview") return <PricingDisplay value={value} />;
   return (
     <PricingPicker
       value={value}
-      onChange={onChange ?? (() => { })}
+      onChange={onChange ?? (() => {})}
       eventCapacity={eventCapacity}
       onEventCapacityChange={onEventCapacityChange}
       eventStartDate={eventStartDate}
       eventStartTime={eventStartTime}
       onAfterSave={onAfterSave}
+      modalOpen={modalOpen}
+      onModalOpenChange={onModalOpenChange}
+      ticketingEnabled={ticketingEnabled}
     />
   );
 }

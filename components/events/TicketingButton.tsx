@@ -46,6 +46,10 @@ interface TicketingButtonProps {
   hasTiers?: boolean;
   /** Whether the button is in edit form. Defaults to false. */
   editor?: boolean;
+  /** Callback fired when the button is clicked but has no tiers */
+  onNoTiersClick?: () => void;
+  /** Whether ticketing is initialized */
+  ticketingEnabled?: boolean | null;
 }
 
 /**
@@ -63,26 +67,55 @@ export function TicketingButton({
   draft = false,
   hasTiers = true,
   editor = false,
+  onNoTiersClick,
+  ticketingEnabled = null,
 }: TicketingButtonProps) {
   const router = useRouter();
-  const [ticketingEnabled, setTicketingEnabled] = useState<boolean | null>(
-    null,
-  );
-  const [loading, setLoading] = useState(true);
+
+  // Track our own state only if null is provided
+  const [fetchedTicketingEnabled, setFetchedTicketingEnabled] = useState<
+    boolean | null
+  >(null);
+  const [didFetch, setDidFetch] = useState(false);
 
   useEffect(() => {
+    // If the prop is explicitly set, we do not need to fetch.
+    if (ticketingEnabled !== null) {
+      return;
+    }
+
+    if (didFetch) return;
+
+    // Only fetch if not provided via props
+    let isMounted = true;
     fetch(`/api/events/${eventId}/ticketing`)
       .then((res) => res.json())
       .then((json) => {
-        setTicketingEnabled(!!json.data?.ticketing?.enabled);
+        if (isMounted) {
+          setFetchedTicketingEnabled(!!json.data?.ticketing?.enabled);
+          setDidFetch(true);
+        }
       })
-      .catch(() => setTicketingEnabled(false))
-      .finally(() => setLoading(false));
-  }, [eventId]);
+      .catch(() => {
+        if (isMounted) {
+          setFetchedTicketingEnabled(false);
+          setDidFetch(true);
+        }
+      });
 
-  if (loading) return null;
+    return () => {
+      isMounted = false;
+    };
+  }, [eventId, ticketingEnabled, didFetch]);
 
-  const isSetUp = ticketingEnabled === true;
+  // Use the prop if valid, otherwise fallback to the fetched state
+  const finalTicketingEnabled =
+    ticketingEnabled !== null ? ticketingEnabled : fetchedTicketingEnabled;
+  if (finalTicketingEnabled === null && mode === "edit") {
+    // We only show a loading state if we're in edit mode.
+    return null;
+  }
+  const isSetUp = finalTicketingEnabled === true;
 
   /* Preview mode: only show if ticketing is set up */
   if (mode === "preview" && !isSetUp) return null;
@@ -95,7 +128,8 @@ export function TicketingButton({
       : "Get Tickets";
 
   const accentStyle = getAccentButtonStyle(accent, accentCustom);
-  const disabled = loading || !hasTiers || (mode === "preview" && draft);
+  const loading = finalTicketingEnabled === null;
+  const disabled = loading || (mode === "preview" && draft);
   const tooltip = !hasTiers
     ? "Add at least one ticket tier to enable checkout"
     : draft
@@ -104,7 +138,15 @@ export function TicketingButton({
 
   const handleClick = () => {
     if (!hasTiers) {
-      toast.error(editor ? "Add at least one ticket tier to enable checkout" : "Event has no tickets");
+      if (onNoTiersClick) {
+        onNoTiersClick();
+      } else {
+        toast.error(
+          editor
+            ? "Add at least one ticket tier to enable checkout"
+            : "Event has no tickets",
+        );
+      }
       return;
     }
 
@@ -134,7 +176,7 @@ export function TicketingButton({
                 className={cn(
                   "w-full gap-2 rounded-lg",
                   !accentStyle &&
-                  "bg-foreground text-background hover:bg-foreground/90",
+                    "bg-foreground text-background hover:bg-foreground/90",
                 )}
                 style={accentStyle}
                 onClick={handleClick}
@@ -158,7 +200,7 @@ export function TicketingButton({
                 className={cn(
                   "gap-2 rounded-lg px-10",
                   !accentStyle &&
-                  "bg-foreground text-background hover:bg-foreground/90",
+                    "bg-foreground text-background hover:bg-foreground/90",
                 )}
                 style={accentStyle}
                 onClick={handleClick}

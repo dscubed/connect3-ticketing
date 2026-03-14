@@ -37,7 +37,7 @@ export interface PublicEventData {
   }[];
   ticket_tiers: {
     id: string;
-    type: string;
+    member_verification: boolean;
     name: string;
     price: number;
     quantity: number | null;
@@ -62,6 +62,9 @@ export interface PublicEventData {
     first_name: string;
     avatar_url: string | null;
   } | null;
+  ticketing: {
+    enabled: boolean;
+  } | null;
 }
 
 /**
@@ -76,7 +79,7 @@ export async function fetchEventServer(
   let query = supabaseAdmin
     .from("events")
     .select("*, event_locations(*)")
-    .eq("id", eventId);
+    .or(`id.eq.${eventId},url_slug.eq.${eventId}`);
 
   if (requirePublished) {
     query = query.eq("status", "published");
@@ -86,46 +89,59 @@ export async function fetchEventServer(
 
   if (error || !event) return null;
 
-  const [images, hosts, tiers, links, theme, sections, creatorProfile] =
-    await Promise.all([
-      supabaseAdmin
-        .from("event_images")
-        .select("id, url, sort_order")
-        .eq("event_id", eventId)
-        .order("sort_order"),
-      supabaseAdmin
-        .from("event_hosts")
-        .select(
-          "profile_id, status, profiles:profile_id(id, first_name, avatar_url)",
-        )
-        .eq("event_id", eventId)
-        .order("sort_order"),
-      supabaseAdmin
-        .from("event_ticket_tiers")
-        .select("id, type, name, price, quantity, sort_order")
-        .eq("event_id", eventId)
-        .order("sort_order"),
-      supabaseAdmin
-        .from("event_links")
-        .select("id, url, title, sort_order")
-        .eq("event_id", eventId)
-        .order("sort_order"),
-      supabaseAdmin
-        .from("event_themes")
-        .select("mode, layout, accent, accent_custom, bg_color")
-        .eq("event_id", eventId)
-        .single(),
-      supabaseAdmin
-        .from("event_sections")
-        .select("id, type, data, sort_order")
-        .eq("event_id", eventId)
-        .order("sort_order"),
-      supabaseAdmin
-        .from("profiles")
-        .select("id, first_name, avatar_url")
-        .eq("id", event.creator_profile_id)
-        .single(),
-    ]);
+  const [
+    images,
+    hosts,
+    tiers,
+    links,
+    theme,
+    sections,
+    creatorProfile,
+    ticketing,
+  ] = await Promise.all([
+    supabaseAdmin
+      .from("event_images")
+      .select("id, url, sort_order")
+      .eq("event_id", event.id)
+      .order("sort_order"),
+    supabaseAdmin
+      .from("event_hosts")
+      .select(
+        "profile_id, status, profiles:profile_id(id, first_name, avatar_url)",
+      )
+      .eq("event_id", event.id)
+      .order("sort_order"),
+    supabaseAdmin
+      .from("event_ticket_tiers")
+      .select("id, member_verification, name, price, quantity, sort_order")
+      .eq("event_id", event.id)
+      .order("sort_order"),
+    supabaseAdmin
+      .from("event_links")
+      .select("id, url, title, sort_order")
+      .eq("event_id", event.id)
+      .order("sort_order"),
+    supabaseAdmin
+      .from("event_themes")
+      .select("mode, layout, accent, accent_custom, bg_color")
+      .eq("event_id", event.id)
+      .single(),
+    supabaseAdmin
+      .from("event_sections")
+      .select("id, type, data, sort_order")
+      .eq("event_id", event.id)
+      .order("sort_order"),
+    supabaseAdmin
+      .from("profiles")
+      .select("id, first_name, avatar_url")
+      .eq("id", event.creator_profile_id)
+      .single(),
+    supabaseAdmin
+      .from("event_ticketing")
+      .select("enabled")
+      .eq("event_id", event.id)
+      .single(),
+  ]);
 
   const loc = event.event_locations;
 
@@ -158,6 +174,7 @@ export async function fetchEventServer(
     theme: theme.data ?? null,
     sections: sections.data ?? [],
     creator_profile: creatorProfile.data ?? null,
+    ticketing: ticketing.data ?? null,
   };
 }
 
@@ -267,3 +284,4 @@ export async function checkEventEditAccess(
   console.log("[checkEventEditAccess] No match → forbidden");
   return { allowed: false, reason: "forbidden" };
 }
+

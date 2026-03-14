@@ -2,16 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
-import {
-  ArrowLeft,
-  Loader2,
-  Eye,
-  Pencil,
-  CreditCard,
-  Minus,
-  Plus,
-  ToggleLeft,
-} from "lucide-react";
+import { ArrowLeft, Loader2, CreditCard, Minus, Plus } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -47,6 +38,7 @@ import {
   getThemeColors,
   getAccentGradient,
 } from "@/components/events/shared/types";
+import { EditorToolbox } from "@/components/events/shared/EditorToolbox";
 import { useAuthStore } from "@/stores/authStore";
 import { useEventRealtime } from "@/lib/hooks/useEventRealtime";
 import { useDocumentDark } from "@/lib/hooks/useDocumentDark";
@@ -155,6 +147,7 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
   const [previewMode, setPreviewMode] = useState(mode === "preview");
   const [ticketingEnabled, setTicketingEnabled] = useState(false);
   const [enablingTicketing, setEnablingTicketing] = useState(false);
+  const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
 
   /* ── Custom ticket fields ── */
   const [fields, setFields] = useState<TicketingFieldDraft[]>([]);
@@ -428,84 +421,27 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
       className={cn("min-h-screen pb-12", pageBgClass, isDark && "dark")}
       style={solidBg ? { backgroundColor: solidBg } : undefined}
     >
-      {/* Toolbar (edit mode only) */}
-      {mode === "edit" && (
-        <div
-          className={cn(
-            "sticky top-14 z-40 border-b shadow-lg",
-            isDark
-              ? "border-neutral-700/60 bg-neutral-900/60 text-neutral-100 backdrop-blur-xl"
-              : "bg-background/95 backdrop-blur",
-          )}
-        >
-          <div className="mx-auto flex max-w-3xl items-center justify-between gap-2 px-3 sm:px-6 h-14">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-2 shrink-0"
-              onClick={() => router.push(`/events/${eventId}/edit`)}
-            >
-              <ArrowLeft className="h-4 w-4" />
-              <span className="hidden sm:inline">Back to Event</span>
-            </Button>
-
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
-                {savingFields ? (
-                  <>
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    Saving…
-                  </>
-                ) : (
-                  lastSavedAt && <LastSavedLabel date={lastSavedAt} />
-                )}
-              </span>
-
-              {collaborators.size > 0 && (
-                <span className="text-xs text-muted-foreground">
-                  {collaborators.size} editing
-                </span>
-              )}
-
-              {ticketingEnabled && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 text-destructive hover:text-destructive"
-                  onClick={handleDisableTicketing}
-                  disabled={disablingTicketing}
-                >
-                  {disablingTicketing ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <ToggleLeft className="h-3.5 w-3.5" />
-                  )}
-                  <span className="hidden sm:inline">Disable</span>
-                </Button>
-              )}
-
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5"
-                onClick={() => setPreviewMode((p) => !p)}
-              >
-                {previewMode ? (
-                  <>
-                    <Pencil className="h-3.5 w-3.5" />
-                    <span className="hidden sm:inline">Edit</span>
-                  </>
-                ) : (
-                  <>
-                    <Eye className="h-3.5 w-3.5" />
-                    <span className="hidden sm:inline">Preview</span>
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <EditorToolbox
+        eventId={eventId}
+        mode={mode}
+        isDark={isDark}
+        toolbarCollapsed={toolbarCollapsed}
+        setToolbarCollapsed={setToolbarCollapsed}
+        onBack={() => router.push(`/events/${eventId}/edit`)}
+        isAutoSaving={savingFields}
+        lastSavedAt={lastSavedAt}
+        LastSavedLabelComponent={
+          lastSavedAt ? <LastSavedLabel date={lastSavedAt} /> : null
+        }
+        collaboratorCount={collaborators.size}
+        previewMode={previewMode}
+        setPreviewMode={setPreviewMode}
+        eventStatus={undefined} // Not handling publish from checkout for now
+        ticketingEnabled={ticketingEnabled}
+        ticketingChanging={disablingTicketing || enablingTicketing}
+        onEnableTicketing={handleEnableTicketing}
+        onDisableTicketing={handleDisableTicketing}
+      />
 
       {/* Preview mode — back button */}
       {mode === "preview" && (

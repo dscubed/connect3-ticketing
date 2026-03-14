@@ -1,5 +1,5 @@
 export interface TicketTierInput {
-  type: "general" | "members" | "timed" | "special";
+  memberVerification?: boolean;
   name: string;
   price: number;
   quantity?: number | null;
@@ -14,7 +14,11 @@ export function validateTicketTierInput(tier: TicketTierInput): string | null {
     return "Ticket name is required";
   }
 
-  if (typeof tier.price !== "number" || Number.isNaN(tier.price) || tier.price < 0) {
+  if (
+    typeof tier.price !== "number" ||
+    Number.isNaN(tier.price) ||
+    tier.price < 0
+  ) {
     return "Ticket price must be a valid non-negative number";
   }
 
@@ -60,7 +64,11 @@ export function validateTicketTierInput(tier: TicketTierInput): string | null {
 /** Validates event-level capacity (total tickets). */
 export function validateEventCapacity(capacity: unknown): string | null {
   if (capacity === null || capacity === undefined) return null;
-  if (typeof capacity !== "number" || !Number.isInteger(capacity) || capacity <= 0) {
+  if (
+    typeof capacity !== "number" ||
+    !Number.isInteger(capacity) ||
+    capacity <= 0
+  ) {
     return "Event capacity must be a positive integer when provided";
   }
   return null;

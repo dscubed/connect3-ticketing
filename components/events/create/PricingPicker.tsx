@@ -13,6 +13,10 @@ interface PricingPickerProps extends EditInputProps<TicketTier[]> {
   eventStartTime?: string;
   /** Called after tiers are saved — use to immediately flush pending auto-saves */
   onAfterSave?: () => void;
+  modalOpen?: boolean;
+  onModalOpenChange?: (open: boolean) => void;
+  /** Whether ticketing is initialized */
+  ticketingEnabled: boolean;
 }
 
 /**
@@ -27,8 +31,13 @@ export function PricingPicker({
   eventStartDate,
   eventStartTime,
   onAfterSave,
+  modalOpen: controlledModalOpen,
+  onModalOpenChange,
+  ticketingEnabled,
 }: PricingPickerProps) {
-  const [modalOpen, setModalOpen] = useState(false);
+  const [internalModalOpen, setInternalModalOpen] = useState(false);
+  const modalOpen = controlledModalOpen ?? internalModalOpen;
+  const setModalOpen = onModalOpenChange ?? setInternalModalOpen;
 
   return (
     <>
@@ -55,6 +64,7 @@ export function PricingPicker({
           onEventCapacityChange?.(cap);
           onAfterSave?.();
         }}
+        ticketingEnabled={ticketingEnabled}
       />
     </>
   );

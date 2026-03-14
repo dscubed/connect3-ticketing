@@ -3,7 +3,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +39,7 @@ import { ImageManagerDialog } from "./create/ImageManagerDialog";
 import { ThemeDialog } from "./create/ThemeDialog";
 import { SectionWrapper } from "./preview/SectionWrapper";
 import { TicketingButton } from "./TicketingButton";
+import { EditorToolbox } from "./shared/EditorToolbox";
 
 /* ── Other ── */
 import {
@@ -56,16 +56,7 @@ import {
   type DragHandleProps,
 } from "./sections";
 import { useAuthStore } from "@/stores/authStore";
-import {
-  ArrowLeft,
-  ChevronDown,
-  ChevronUp,
-  Eye,
-  EyeOff,
-  Loader2,
-  Palette,
-  Pencil,
-} from "lucide-react";
+
 import { toast } from "sonner";
 import { createEvent } from "@/lib/api/createEvent";
 import { updateEvent } from "@/lib/api/updateEvent";
@@ -103,12 +94,16 @@ interface EventFormProps {
   initialHostsData?: ClubProfile[];
   /** Pre-loaded sections (edit mode) */
   initialSections?: SectionData[];
+  /** Initial URL Slug (edit mode) */
+  initialUrlSlug?: string | null;
   /** Event ID — required for edit mode */
   eventId?: string;
   /** Form mode */
   mode?: "create" | "edit";
   /** Current event status (edit mode) */
   initialStatus?: "draft" | "published" | "archived";
+  /** Whether ticketing is initialized (edit mode) */
+  initialTicketingEnabled?: boolean;
   /** The event creator's profile (edit mode — fetched from DB) */
   initialCreatorProfile?: ClubProfile;
   /** Called on form submit */
@@ -212,7 +207,9 @@ export default function EventForm({
   eventId,
   mode = "create",
   initialStatus = "draft",
+  initialTicketingEnabled = false,
   initialCreatorProfile,
+  initialUrlSlug = null,
 }: EventFormProps) {
   const router = useRouter();
   const profile = useAuthStore((s) => s.profile);
@@ -224,7 +221,14 @@ export default function EventForm({
   const [eventStatus, setEventStatus] = useState<
     "draft" | "published" | "archived"
   >(initialStatus);
+  const [ticketingEnabled, setTicketingEnabled] = useState(
+    initialTicketingEnabled,
+  );
+  const [pricingModalOpen, setPricingModalOpen] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
+
+  const [ticketingChanging, setTicketingChanging] = useState(false);
+
   const focusedFieldRef = useRef<FieldGroup | null>(null);
 
   /** Map form field keys → FieldGroup for auto-save. */
@@ -354,7 +358,7 @@ export default function EventForm({
   const cardDark = isDark;
 
   /* ── Auto-save (field-group-aware, debounced) ── */
-  const broadcastRef = useRef<(groups: FieldGroup[]) => void>(() => { });
+  const broadcastRef = useRef<(groups: FieldGroup[]) => void>(() => {});
 
   /**
    * Always-current refs so performAutoSave never captures stale closure values.
@@ -390,7 +394,13 @@ export default function EventForm({
             latestSections,
           );
         } else {
-          await createEvent(eventId!, latestForm, latestImages, latestSections, "draft");
+          await createEvent(
+            eventId!,
+            latestForm,
+            latestImages,
+            latestSections,
+            "draft",
+          );
           setDraftSaved(true);
           draftSavedRef.current = true;
         }
@@ -683,6 +693,51 @@ export default function EventForm({
     }
   };
 
+  /* ── Enable / Disable Ticketing Toggle ── */
+  const executeEnableTicketing = async () => {
+    if (!eventId) return;
+
+    const hasTiers = (form.pricing ?? []).length > 0;
+    if (!hasTiers) {
+      toast.error("Add at least one ticket tier before enabling ticketing.");
+      return;
+    }
+
+    setTicketingChanging(true);
+    try {
+      const res = await fetch(`/api/events/${eventId}/ticketing`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error("Failed");
+      setTicketingEnabled(true);
+      toast.success("Ticketing enabled!");
+    } catch {
+      toast.error(`Failed to enable ticketing.`);
+    } finally {
+      setTicketingChanging(false);
+    }
+  };
+
+  const executeDisableTicketing = async () => {
+    if (!eventId) return;
+
+    setTicketingChanging(true);
+    try {
+      const res = await fetch(`/api/events/${eventId}/ticketing`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: false }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      setTicketingEnabled(false);
+      toast.success("Ticketing disabled.");
+    } catch {
+      toast.error(`Failed to disable ticketing.`);
+    } finally {
+      setTicketingChanging(false);
+    }
+  };
+
   /* ── Section-level DnD ── */
   const sectionSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -786,124 +841,41 @@ export default function EventForm({
       className={cn("min-h-screen pb-12", pageBgClass, colors.isDark && "dark")}
       style={solidBg ? { backgroundColor: solidBg } : undefined}
     >
-      {/* Toolbar */}
-      <div
-        className={cn(
-          "sticky top-14 z-40 border-b transition-all shadow-lg",
-          isDark
-            ? "border-neutral-700/60 bg-neutral-900/60 text-neutral-100 backdrop-blur-xl"
-            : "bg-background/95 backdrop-blur",
-          toolbarCollapsed && "border-b-0! shadow-none!",
-        )}
-      >
-        <div
-          className={cn(
-            "mx-auto flex max-w-4xl items-center justify-between gap-2 px-3 sm:px-6 transition-all overflow-hidden",
-            toolbarCollapsed ? "h-0" : "h-14",
-          )}
-        >
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-2 shrink-0"
-            onClick={handleBack}
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span className="hidden sm:inline">Back</span>
-          </Button>
-
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
-              {isAutoSaving ? (
-                <>
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Saving…
-                </>
-              ) : (
-                lastSavedAt && <LastSavedLabel date={lastSavedAt} />
-              )}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              onClick={() => setThemeOpen(true)}
-            >
-              <Palette className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Theme</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              onClick={() => setPreviewMode((p) => !p)}
-            >
-              {previewMode ? (
-                <>
-                  <Pencil className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Edit</span>
-                </>
-              ) : (
-                <>
-                  <Eye className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Preview</span>
-                </>
-              )}
-            </Button>
-            {eventStatus === "published" ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 shrink-0"
-                onClick={handleUnpublish}
-                disabled={saving}
-              >
-                {saving ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <EyeOff className="h-3.5 w-3.5" />
-                )}
-                <span className="hidden sm:inline">Unpublish</span>
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                className="shrink-0"
-                onClick={handlePublish}
-                disabled={saving || !form.name}
-              >
-                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                <span>Publish</span>
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {/* Collapse / expand toggle */}
-        <button
-          type="button"
-          onClick={() => setToolbarCollapsed((c) => !c)}
-          className={cn(
-            "absolute -bottom-6 right-4 z-50 flex h-6 w-8 items-center justify-center rounded-b-md border border-t-0 shadow-sm transition-colors",
-            isDark
-              ? "border-neutral-700/60 bg-neutral-900/80 text-neutral-300 hover:text-neutral-100"
-              : "border-border/60 bg-background/95 text-muted-foreground hover:text-foreground",
-          )}
-        >
-          {toolbarCollapsed ? (
-            <ChevronDown className="h-3.5 w-3.5" />
-          ) : (
-            <ChevronUp className="h-3.5 w-3.5" />
-          )}
-        </button>
-      </div>
+      <EditorToolbox
+          eventId={eventId}
+                    initialUrlSlug={initialUrlSlug}
+        mode={viewMode}
+        isDark={isDark}
+        toolbarCollapsed={toolbarCollapsed}
+        setToolbarCollapsed={setToolbarCollapsed}
+        onBack={handleBack}
+        onFlush={flush}
+        isAutoSaving={isAutoSaving}
+        lastSavedAt={lastSavedAt}
+        LastSavedLabelComponent={
+          lastSavedAt ? <LastSavedLabel date={lastSavedAt} /> : null
+        }
+        collaboratorCount={collaborators.size}
+        setThemeOpen={setThemeOpen}
+        previewMode={previewMode}
+        setPreviewMode={setPreviewMode}
+        eventStatus={eventStatus}
+        hasName={!!form.name}
+        savingPublish={saving}
+        onPublish={handlePublish}
+        onUnpublish={handleUnpublish}
+        ticketingEnabled={ticketingEnabled}
+        ticketingChanging={ticketingChanging}
+        onEnableTicketing={executeEnableTicketing}
+        onDisableTicketing={executeDisableTicketing}
+      />
 
       {/* ── Full-width accent gradient overlay ── */}
       <div style={accentGradient ? { background: accentGradient } : undefined}>
         {/* ── Single unified layout ── */}
         <div
           className={cn(
-            "mx-auto max-w-4xl px-3 py-6 sm:px-6 sm:py-8",
+            "mx-auto max-w-4xl px-3 pb-6 pt-12 sm:px-6 sm:pb-8",
             pageTextClass,
           )}
         >
@@ -1061,6 +1033,9 @@ export default function EventForm({
                       eventStartDate={form.startDate}
                       eventStartTime={form.startTime}
                       onAfterSave={() => flush()}
+                      modalOpen={pricingModalOpen}
+                      onModalOpenChange={setPricingModalOpen}
+                      ticketingEnabled={ticketingEnabled}
                     />
                   </div>
                   <div
@@ -1201,9 +1176,18 @@ export default function EventForm({
           isDark={isDark}
           draft={eventStatus === "draft"}
           hasTiers={form.pricing.length > 0}
+          ticketingEnabled={ticketingEnabled}
+          onNoTiersClick={() => setPricingModalOpen(true)}
           editor
         />
       )}
     </div>
   );
 }
+
+
+
+
+
+
+

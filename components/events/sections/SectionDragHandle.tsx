@@ -14,12 +14,14 @@ export function SectionDragHandle({
 }: {
   dragHandleProps: DragHandleProps;
 }) {
+  const { ref, listeners, attributes } = dragHandleProps;
+
   return (
     <button
       type="button"
-      ref={dragHandleProps.ref}
-      {...dragHandleProps.listeners}
-      {...dragHandleProps.attributes}
+      ref={ref}
+      {...listeners}
+      {...attributes}
       className="cursor-grab touch-none active:cursor-grabbing"
     >
       <GripVertical className="h-5 w-5 text-muted-foreground/40" />

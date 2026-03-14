@@ -10,6 +10,7 @@ import {
 } from "@/lib/utils/ticketPricing";
 
 /* ── Types ── */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 interface TicketTierPayload extends TicketTierInput {}
 interface EventLinkPayload {
   url: string;
@@ -62,40 +63,46 @@ export async function GET(
     }
 
     /* Related tables in parallel */
-    const [images, hosts, tiers, links, theme, sections] = await Promise.all([
-      supabaseAdmin
-        .from("event_images")
-        .select("*")
-        .eq("event_id", id)
-        .order("sort_order"),
-      supabaseAdmin
-        .from("event_hosts")
-        .select(
-          "profile_id, sort_order, status, inviter_id, profiles:profile_id(id, first_name, avatar_url)",
-        )
-        .eq("event_id", id)
-        .order("sort_order"),
-      supabaseAdmin
-        .from("event_ticket_tiers")
-        .select("*")
-        .eq("event_id", id)
-        .order("sort_order"),
-      supabaseAdmin
-        .from("event_links")
-        .select("*")
-        .eq("event_id", id)
-        .order("sort_order"),
-      supabaseAdmin
-        .from("event_themes")
-        .select("*")
-        .eq("event_id", id)
-        .single(),
-      supabaseAdmin
-        .from("event_sections")
-        .select("*")
-        .eq("event_id", id)
-        .order("sort_order"),
-    ]);
+    const [images, hosts, tiers, links, theme, sections, ticketing] =
+      await Promise.all([
+        supabaseAdmin
+          .from("event_images")
+          .select("*")
+          .eq("event_id", id)
+          .order("sort_order"),
+        supabaseAdmin
+          .from("event_hosts")
+          .select(
+            "profile_id, sort_order, status, inviter_id, profiles:profile_id(id, first_name, avatar_url)",
+          )
+          .eq("event_id", id)
+          .order("sort_order"),
+        supabaseAdmin
+          .from("event_ticket_tiers")
+          .select("*")
+          .eq("event_id", id)
+          .order("sort_order"),
+        supabaseAdmin
+          .from("event_links")
+          .select("*")
+          .eq("event_id", id)
+          .order("sort_order"),
+        supabaseAdmin
+          .from("event_themes")
+          .select("*")
+          .eq("event_id", id)
+          .single(),
+        supabaseAdmin
+          .from("event_sections")
+          .select("*")
+          .eq("event_id", id)
+          .order("sort_order"),
+        supabaseAdmin
+          .from("event_ticketing")
+          .select("*")
+          .eq("event_id", id)
+          .single(),
+      ]);
 
     return NextResponse.json({
       data: {
@@ -106,6 +113,7 @@ export async function GET(
         links: links.data ?? [],
         theme: theme.data ?? null,
         sections: sections.data ?? [],
+        ticketing: ticketing.data ?? null,
       },
     });
   } catch (error) {
@@ -160,15 +168,27 @@ export async function PUT(
     const isOnline: boolean = body.isOnline ?? false;
     const category: string | null = body.category || null;
     const tags: string[] = body.tags ?? [];
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const hostIds: string[] = body.hostIds ?? [];
     const pricing: TicketTierPayload[] = body.pricing ?? [];
-    const eventCapacity: number | null = body.eventCapacity ?? null;
     const links: EventLinkPayload[] = body.links ?? [];
     const theme: ThemePayload | null = body.theme ?? null;
     const location: LocationPayload | null = body.location ?? null;
     const imageUrls: string[] = body.imageUrls ?? [];
     const sections: SectionPayload[] = body.sections ?? [];
     const eventStatus: string | undefined = body.status;
+
+    const eventCapacityInput: number | null = body.eventCapacity ?? null;
+    let eventCapacity = eventCapacityInput;
+
+    if (pricing.length > 0) {
+      const sumQuantities = pricing.reduce((sum, tier) => {
+        return sum + (tier.quantity ?? 0);
+      }, 0);
+      if (eventCapacity !== null && sumQuantities > eventCapacity) {
+        eventCapacity = sumQuantities;
+      }
+    }
 
     const capError = validateEventCapacity(eventCapacity);
     if (capError) {
@@ -315,16 +335,13 @@ export async function PUT(
       for (const tier of pricing) {
         const validationError = validateTicketTierInput(tier);
         if (validationError) {
-          return NextResponse.json(
-            { error: validationError },
-            { status: 400 },
-          );
+          return NextResponse.json({ error: validationError }, { status: 400 });
         }
       }
 
       const rows = pricing.map((t, i) => ({
         event_id: eventId,
-        type: t.type,
+        member_verification: t.memberVerification ?? false,
         name: t.name,
         price: t.price,
         quantity: t.quantity ?? null,
@@ -614,7 +631,7 @@ export async function PATCH(
 
         const rows = pricing.map((t, i) => ({
           event_id: eventId,
-          type: t.type,
+          member_verification: t.memberVerification ?? false,
           name: t.name,
           price: t.price,
           quantity: t.quantity ?? null,

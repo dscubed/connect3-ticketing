@@ -12,16 +12,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  Info,
-  Plus,
-  Trash2,
-  Settings2,
-} from "lucide-react";
+import { Info, Plus, Trash2, Settings2, AlertTriangle } from "lucide-react";
 import type { TicketTier } from "../shared/types";
 import { validateTicketTier as validateTier } from "../shared/pricingUtils";
 import { TicketOfferWindowFields } from "./TicketOfferWindowFields";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
 
 interface PricingModalProps {
   open: boolean;
@@ -31,6 +27,7 @@ interface PricingModalProps {
   eventCapacity?: number | null;
   eventStartDate?: string;
   eventStartTime?: string;
+  ticketingEnabled: boolean;
 }
 
 let nextId = 1;
@@ -46,6 +43,7 @@ export function PricingModal({
   eventCapacity: initialEventCapacity,
   eventStartDate,
   eventStartTime,
+  ticketingEnabled,
 }: PricingModalProps) {
   const [tiers, setTiers] = useState<TicketTier[]>(value);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -60,6 +58,8 @@ export function PricingModal({
   const [eventCapacity, setEventCapacity] = useState<number | null>(
     initialEventCapacity ?? null,
   );
+
+  const eventId = window.location.pathname.split("/")[2];
 
   const handleOpenChange = (next: boolean) => {
     if (next) {
@@ -88,17 +88,14 @@ export function PricingModal({
     }
 
     const id = genId();
-    setTiers((prev) => [
-      ...prev,
-      { id, type: "general", name: "", price: 0, quantity: null },
-    ]);
+    setTiers((prev) => [...prev, { id, name: "", price: 0, quantity: null }]);
   };
 
   const addFreeTier = () => {
     const id = genId();
     setTiers((prev) => [
       ...prev,
-      { id, type: "general", name: "Free Ticket", price: 0, quantity: null },
+      { id, name: "Free Ticket", price: 0, quantity: null },
     ]);
     setErrors((prev) => {
       const next = { ...prev };
@@ -111,8 +108,19 @@ export function PricingModal({
     const id = genId();
     setTiers((prev) => [
       ...prev,
-      { id, type: "members", name: "Members Only", price: 0, quantity: null },
+      {
+        id,
+        memberVerification: true,
+        name: "Members Only",
+        price: 0,
+        quantity: null,
+      },
     ]);
+    setOpenSettings((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
   };
 
   const removeTier = (id: string) => {
@@ -135,9 +143,26 @@ export function PricingModal({
   };
 
   const updateTier = (id: string, updates: Partial<TicketTier>) => {
-    setTiers((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, ...updates } : t)),
-    );
+    setTiers((prev) => {
+      const nextTiers = prev.map((t) =>
+        t.id === id ? { ...t, ...updates } : t,
+      );
+
+      if ("quantity" in updates) {
+        const sumQuantities = nextTiers.reduce(
+          (sum, tier) => sum + (tier.quantity ?? 0),
+          0,
+        );
+        setEventCapacity((prevCap) => {
+          if (prevCap !== null && sumQuantities > prevCap) {
+            return sumQuantities;
+          }
+          return prevCap;
+        });
+      }
+
+      return nextTiers;
+    });
     setErrors((prev) => {
       const next = { ...prev };
       delete next[id];
@@ -158,10 +183,17 @@ export function PricingModal({
     const newErrors: Record<string, string> = {};
     const validTiers: TicketTier[] = [];
 
+    let sumQuantities = 0;
+
     tiers.forEach((tier) => {
       const error = validateTier(tier);
       if (error) newErrors[tier.id] = error;
-      else validTiers.push(tier);
+      else {
+        validTiers.push(tier);
+        if (tier.quantity != null) {
+          sumQuantities += tier.quantity;
+        }
+      }
     });
 
     if (Object.keys(newErrors).length > 0) {
@@ -169,7 +201,12 @@ export function PricingModal({
       return;
     }
 
-    onSave(validTiers, eventCapacity);
+    let finalCapacity = eventCapacity;
+    if (finalCapacity !== null && sumQuantities > finalCapacity) {
+      finalCapacity = sumQuantities;
+    }
+
+    onSave(validTiers, finalCapacity);
     onOpenChange(false);
   };
 
@@ -185,38 +222,117 @@ export function PricingModal({
     >
       <div className="flex flex-col gap-4">
         {/* Event-level capacity */}
-        <div className="flex items-center gap-3 rounded-lg border bg-muted/30 px-3 py-2">
-          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-            <Label className="shrink-0 text-xs font-medium text-muted-foreground">
-              Event Capacity
-            </Label>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Info className="h-3.5 w-3.5 shrink-0 cursor-help text-muted-foreground" />
-                </TooltipTrigger>
-                <TooltipContent side="top" className="max-w-52">
-                  Total tickets available across all tiers. Leave empty for
-                  unlimited.
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-3 rounded-lg border bg-muted/30 px-3 py-2">
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              <Label className="shrink-0 text-xs font-medium text-muted-foreground">
+                Event Capacity
+              </Label>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 shrink-0 cursor-help text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-52">
+                    Total tickets available across all tiers. Leave empty for
+                    unlimited.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+            <Input
+              type="number"
+              min={1}
+              value={eventCapacity ?? ""}
+              onChange={(e) => {
+                const val = e.target.value
+                  ? parseInt(e.target.value, 10)
+                  : null;
+                if (val !== null && !isNaN(val)) {
+                  setEventCapacity(val);
+                } else if (e.target.value === "") {
+                  setEventCapacity(null);
+                }
+
+                // Clear any capacity errors while typing
+                setErrors((prev) => {
+                  if (!prev.capacity) return prev;
+                  const next = { ...prev };
+                  delete next.capacity;
+                  return next;
+                });
+              }}
+              onBlur={() => {
+                if (eventCapacity !== null) {
+                  const sumQuantities = tiers.reduce(
+                    (sum, t) => sum + (t.quantity ?? 0),
+                    0,
+                  );
+                  if (eventCapacity < sumQuantities) {
+                    setEventCapacity(sumQuantities);
+                    setErrors((prev) => ({
+                      ...prev,
+                      capacity: `Capacity cannot be lower than the sum of ticket quantities (${sumQuantities})`,
+                    }));
+
+                    // Clear the error message smoothly after 3 seconds
+                    setTimeout(() => {
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.capacity;
+                        return next;
+                      });
+                    }, 3000);
+                  } else {
+                    // Just enforce min bounds
+                    setEventCapacity(Math.max(1, eventCapacity));
+                  }
+                }
+              }}
+              placeholder="Unlimited"
+              className="h-8 w-32 text-sm"
+            />
           </div>
-          <Input
-            type="number"
-            min={1}
-            value={eventCapacity ?? ""}
-            onChange={(e) =>
-              setEventCapacity(
-                e.target.value
-                  ? Math.max(1, parseInt(e.target.value, 10) || 1)
-                  : null,
-              )
-            }
-            placeholder="Unlimited"
-            className="h-8 w-32 text-sm"
-          />
+          {errors.capacity && (
+            <p className="text-xs text-red-500 px-1">{errors.capacity}</p>
+          )}
         </div>
+
+        {/* Empty ticketing tiers warning */}
+        {ticketingEnabled && tiers.length === 0 && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 flex gap-3 items-start text-red-800 dark:border-red-900/50 dark:bg-red-900/10 dark:text-red-400">
+            <AlertTriangle className="h-full shrink-0" />
+            <div className="text-xs">
+              <p className="font-semibold">
+                Ticketing is enabled but no tickets are configured.
+              </p>
+              <p className="mt-1 opacity-90">
+                Please add at least one ticket tier, or guests won&apos;t be
+                able to register.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Enable ticketing alert */}
+        {!ticketingEnabled && tiers.length > 0 && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 flex gap-3 items-start text-blue-800 dark:border-blue-900/50 dark:bg-blue-900/10 dark:text-blue-400">
+            <AlertTriangle className="h-full shrink-0" />
+            <div className="text-xs">
+              <p className="font-semibold">Ticketing is not enabled!</p>
+              <p className="mt-1 opacity-90">
+                You have ticket tiers configured, please{" "}
+                <Link
+                  href={`/events/${eventId}/checkout/edit`}
+                  className="underline"
+                >
+                  enable ticketing
+                </Link>{" "}
+                to allow guests to register.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Table */}
         <div className="overflow-hidden rounded-md border">
@@ -258,7 +374,7 @@ export function PricingModal({
 
             {tiers.map((tier) => {
               const isSettingsOpen = openSettings.has(tier.id);
-              const isMembersOnly = tier.type === "members";
+              const isMembersOnly = tier.memberVerification === true;
               const isOfferWindowOn = offerWindowOpen.has(tier.id);
               const hasSettings = isMembersOnly || isOfferWindowOn;
               const error = errors[tier.id];
@@ -294,10 +410,7 @@ export function PricingModal({
                         value={tier.price === 0 ? "" : tier.price}
                         onChange={(e) =>
                           updateTier(tier.id, {
-                            price: Math.max(
-                              0,
-                              parseFloat(e.target.value) || 0,
-                            ),
+                            price: Math.max(0, parseFloat(e.target.value) || 0),
                           })
                         }
                         placeholder="0.00"
@@ -332,8 +445,7 @@ export function PricingModal({
                           isSettingsOpen || hasSettings
                             ? "text-foreground"
                             : "text-muted-foreground",
-                          (isSettingsOpen || hasSettings) &&
-                          "bg-muted",
+                          (isSettingsOpen || hasSettings) && "bg-muted",
                         )}
                         onClick={() => toggleSettings(tier.id)}
                         aria-label="Ticket settings"
@@ -377,7 +489,7 @@ export function PricingModal({
                           checked={isMembersOnly}
                           onCheckedChange={(checked) =>
                             updateTier(tier.id, {
-                              type: checked ? "members" : "general",
+                              memberVerification: checked,
                             })
                           }
                         />

@@ -36,19 +36,10 @@ export interface ClubProfile {
   avatar_url: string | null;
 }
 
-/**
- * Ticket type.
- * "timed" is kept for backwards-compatibility with existing database rows
- * but is no longer created via the UI — offer windows are now a setting
- * that can be applied to any ticket type.
- */
-export type TicketType = "general" | "members" | "timed";
-
-/** A single ticket tier with type, name, price, and optional sale window. */
+/** A single ticket tier with settings and optional sale window. */
 export interface TicketTier {
   id: string;
-  /** "general" = standard; "members" = members-only; "timed" = legacy (treated as general + offer window) */
-  type: TicketType;
+  memberVerification?: boolean;
   name: string; // Required ticket name (e.g. "General Admission", "VIP", etc.)
   price: number; // 0 = free
   quantity?: number | null; // Optional max number of tickets sold for this tier (null = unlimited)
@@ -58,13 +49,6 @@ export interface TicketTier {
   offerEndDate?: string; // YYYY-MM-DD
   offerEndTime?: string; // HH:MM
 }
-
-/** Placeholder text per ticket type for the name input. */
-export const TICKET_NAME_PLACEHOLDER: Record<string, string> = {
-  general: "e.g. General Admission",
-  members: "e.g. Member Ticket",
-  timed: "e.g. Early Bird",
-};
 
 /** A single event link (e.g. website, social, registration). */
 export interface EventLink {
