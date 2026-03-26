@@ -235,6 +235,12 @@ export function OrgDashboardContent({
             {/* Right: stats */}
             <Card>
               <CardContent className="p-4 space-y-4">
+                <div className="flex items-center justify-between min-h-[32px]">
+                  <h2 className="text-sm font-semibold">Club Stats</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Coming Soon...
+                  </p>
+                </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Shield className="h-4 w-4 text-muted-foreground" />
@@ -245,7 +251,7 @@ export function OrgDashboardContent({
                   <span className="text-sm font-semibold">{adminCount}</span>
                 </div>
                 <Separator />
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between min-h-[32px]">
                   <div className="flex items-center gap-2">
                     <Users className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm text-muted-foreground">
