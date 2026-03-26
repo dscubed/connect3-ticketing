@@ -15,13 +15,13 @@ export default async function CheckoutPage({
   if (!event) notFound();
 
   /* ── Verify ticketing is enabled ── */
-  const { data: ticketing } = await supabaseAdmin
-    .from("event_ticketing")
-    .select("enabled")
-    .eq("event_id", id)
+  const { data: ticketingRow } = await supabaseAdmin
+    .from("events")
+    .select("ticketing_enabled")
+    .eq("id", id)
     .single();
 
-  if (!ticketing?.enabled) {
+  if (!ticketingRow?.ticketing_enabled) {
     notFound();
   }
 

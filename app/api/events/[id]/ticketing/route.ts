@@ -14,11 +14,12 @@ export async function GET(
   try {
     const { id } = await params;
 
-    const [ticketing, fields] = await Promise.all([
+    /* ticketing_enabled lives on the events row; custom fields stay in their own table */
+    const [eventRow, fields] = await Promise.all([
       supabaseAdmin
-        .from("event_ticketing")
-        .select("*")
-        .eq("event_id", id)
+        .from("events")
+        .select("ticketing_enabled")
+        .eq("id", id)
         .single(),
       supabaseAdmin
         .from("event_ticketing_fields")
@@ -29,7 +30,7 @@ export async function GET(
 
     return NextResponse.json({
       data: {
-        ticketing: ticketing.data ?? null,
+        ticketing: { enabled: eventRow.data?.ticketing_enabled ?? true },
         fields: fields.data ?? [],
       },
     });
@@ -44,7 +45,7 @@ export async function GET(
 
 /* ================================================================
    POST /api/events/[id]/ticketing
-   Creates / enables ticketing for the event.
+   Enables ticketing for the event.
 ================================================================ */
 export async function POST(
   request: NextRequest,
@@ -67,25 +68,21 @@ export async function POST(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    /* Upsert ticketing row */
-    const { data, error } = await supabaseAdmin
-      .from("event_ticketing")
-      .upsert(
-        { event_id: id, enabled: true, updated_at: new Date().toISOString() },
-        { onConflict: "event_id" },
-      )
-      .select()
-      .single();
+    /* Set ticketing_enabled = true on the event row */
+    const { error } = await supabaseAdmin
+      .from("events")
+      .update({ ticketing_enabled: true })
+      .eq("id", id);
 
     if (error) {
-      console.error("[POST ticketing] upsert error:", error);
+      console.error("[POST ticketing] update error:", error);
       return NextResponse.json(
         { error: "Failed to enable ticketing" },
         { status: 500 },
       );
     }
 
-    return NextResponse.json({ data });
+    return NextResponse.json({ data: { enabled: true } });
   } catch (err) {
     console.error("[POST /api/events/[id]/ticketing]", err);
     return NextResponse.json(
@@ -97,7 +94,7 @@ export async function POST(
 
 /* ================================================================
    PATCH /api/events/[id]/ticketing
-   Updates ticketing config or custom fields.
+   Updates ticketing enabled flag + custom fields.
 ================================================================ */
 export async function PATCH(
   request: NextRequest,
@@ -134,23 +131,21 @@ export async function PATCH(
       }[];
     };
 
-    /* Update enabled flag */
+    /* Update enabled flag directly on the events row */
     if (enabled !== undefined) {
       await supabaseAdmin
-        .from("event_ticketing")
-        .update({ enabled, updated_at: new Date().toISOString() })
-        .eq("event_id", id);
+        .from("events")
+        .update({ ticketing_enabled: enabled })
+        .eq("id", id);
     }
 
     /* Replace custom fields if provided */
     if (fields) {
-      // Delete existing fields
       await supabaseAdmin
         .from("event_ticketing_fields")
         .delete()
         .eq("event_id", id);
 
-      // Insert new fields
       if (fields.length > 0) {
         const rows = fields.map((f, i) => ({
           event_id: id,

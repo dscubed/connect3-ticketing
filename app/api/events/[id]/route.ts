@@ -63,7 +63,7 @@ export async function GET(
     }
 
     /* Related tables in parallel */
-    const [images, hosts, tiers, links, theme, sections, ticketing] =
+    const [images, hosts, tiers, links, sections] =
       await Promise.all([
         supabaseAdmin
           .from("event_images")
@@ -88,21 +88,20 @@ export async function GET(
           .eq("event_id", id)
           .order("sort_order"),
         supabaseAdmin
-          .from("event_themes")
-          .select("*")
-          .eq("event_id", id)
-          .single(),
-        supabaseAdmin
           .from("event_sections")
           .select("*")
           .eq("event_id", id)
           .order("sort_order"),
-        supabaseAdmin
-          .from("event_ticketing")
-          .select("*")
-          .eq("event_id", id)
-          .single(),
       ]);
+
+    /* Theme and ticketing come directly from the events row */
+    const theme = event.theme_mode != null ? {
+      mode: event.theme_mode,
+      layout: event.theme_layout,
+      accent: event.theme_accent,
+      accent_custom: event.theme_accent_custom ?? null,
+      bg_color: event.theme_bg_color ?? null,
+    } : null;
 
     return NextResponse.json({
       data: {
@@ -111,9 +110,9 @@ export async function GET(
         hosts: hosts.data ?? [],
         ticket_tiers: tiers.data ?? [],
         links: links.data ?? [],
-        theme: theme.data ?? null,
+        theme,
         sections: sections.data ?? [],
-        ticketing: ticketing.data ?? null,
+        ticketing: { enabled: event.ticketing_enabled ?? true },
       },
     });
   } catch (error) {
@@ -368,17 +367,15 @@ export async function PUT(
       await supabaseAdmin.from("event_links").insert(rows);
     }
 
-    /* ── Upsert theme ── */
+    /* ── Update theme columns on events row ── */
     if (theme) {
-      await supabaseAdmin.from("event_themes").delete().eq("event_id", eventId);
-      await supabaseAdmin.from("event_themes").insert({
-        event_id: eventId,
-        mode: theme.mode,
-        layout: theme.layout,
-        accent: theme.accent,
-        accent_custom: theme.accentCustom || null,
-        bg_color: theme.bgColor || null,
-      });
+      await supabaseAdmin.from("events").update({
+        theme_mode: theme.mode,
+        theme_layout: theme.layout,
+        theme_accent: theme.accent,
+        theme_accent_custom: theme.accentCustom || null,
+        theme_bg_color: theme.bgColor || null,
+      }).eq("id", eventId);
     }
 
     /* ── Replace sections ── */
@@ -685,18 +682,13 @@ export async function PATCH(
     if (groups.includes("theme")) {
       const theme: ThemePayload | null = body.theme ?? null;
       if (theme) {
-        await supabaseAdmin
-          .from("event_themes")
-          .delete()
-          .eq("event_id", eventId);
-        await supabaseAdmin.from("event_themes").insert({
-          event_id: eventId,
-          mode: theme.mode,
-          layout: theme.layout,
-          accent: theme.accent,
-          accent_custom: theme.accentCustom || null,
-          bg_color: theme.bgColor || null,
-        });
+        await supabaseAdmin.from("events").update({
+          theme_mode: theme.mode,
+          theme_layout: theme.layout,
+          theme_accent: theme.accent,
+          theme_accent_custom: theme.accentCustom || null,
+          theme_bg_color: theme.bgColor || null,
+        }).eq("id", eventId);
       }
       updatedGroups.push("theme");
     }
@@ -808,7 +800,6 @@ export async function DELETE(
       supabaseAdmin.from("event_hosts").delete().eq("event_id", eventId),
       supabaseAdmin.from("event_ticket_tiers").delete().eq("event_id", eventId),
       supabaseAdmin.from("event_links").delete().eq("event_id", eventId),
-      supabaseAdmin.from("event_themes").delete().eq("event_id", eventId),
       supabaseAdmin.from("event_sections").delete().eq("event_id", eventId),
     ]);
 

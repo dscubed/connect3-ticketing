@@ -585,17 +585,16 @@ export async function POST(request: NextRequest) {
       if (error) console.error("event_links insert error:", error);
     }
 
-    /* ── Insert theme ── */
+    /* ── Set theme columns on the events row ── */
     if (theme) {
-      const { error } = await supabaseAdmin.from("event_themes").insert({
-        event_id: eventId,
-        mode: theme.mode,
-        layout: theme.layout,
-        accent: theme.accent,
-        accent_custom: theme.accentCustom || null,
-        bg_color: theme.bgColor || null,
-      });
-      if (error) console.error("event_themes insert error:", error);
+      const { error } = await supabaseAdmin.from("events").update({
+        theme_mode: theme.mode,
+        theme_layout: theme.layout,
+        theme_accent: theme.accent,
+        theme_accent_custom: theme.accentCustom || null,
+        theme_bg_color: theme.bgColor || null,
+      }).eq("id", eventId);
+      if (error) console.error("theme columns update error:", error);
     }
 
     /* ── Insert sections ── */

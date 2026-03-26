@@ -94,10 +94,8 @@ export async function fetchEventServer(
     hosts,
     tiers,
     links,
-    theme,
     sections,
     creatorProfile,
-    ticketing,
   ] = await Promise.all([
     supabaseAdmin
       .from("event_images")
@@ -122,11 +120,6 @@ export async function fetchEventServer(
       .eq("event_id", event.id)
       .order("sort_order"),
     supabaseAdmin
-      .from("event_themes")
-      .select("mode, layout, accent, accent_custom, bg_color")
-      .eq("event_id", event.id)
-      .single(),
-    supabaseAdmin
       .from("event_sections")
       .select("id, type, data, sort_order")
       .eq("event_id", event.id)
@@ -136,14 +129,21 @@ export async function fetchEventServer(
       .select("id, first_name, avatar_url")
       .eq("id", event.creator_profile_id)
       .single(),
-    supabaseAdmin
-      .from("event_ticketing")
-      .select("enabled")
-      .eq("event_id", event.id)
-      .single(),
   ]);
 
   const loc = event.event_locations;
+
+  /* Theme comes directly from the events row */
+  const theme =
+    event.theme_mode != null
+      ? {
+          mode: event.theme_mode,
+          layout: event.theme_layout,
+          accent: event.theme_accent,
+          accent_custom: event.theme_accent_custom ?? null,
+          bg_color: event.theme_bg_color ?? null,
+        }
+      : null;
 
   return {
     id: event.id,
@@ -171,10 +171,10 @@ export async function fetchEventServer(
     hosts: (hosts.data ?? []) as unknown as PublicEventData["hosts"],
     ticket_tiers: tiers.data ?? [],
     links: links.data ?? [],
-    theme: theme.data ?? null,
+    theme,
     sections: sections.data ?? [],
     creator_profile: creatorProfile.data ?? null,
-    ticketing: ticketing.data ?? null,
+    ticketing: { enabled: event.ticketing_enabled ?? true },
   };
 }
 

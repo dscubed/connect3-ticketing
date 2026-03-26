@@ -237,37 +237,34 @@ export function UserDashboard() {
 
       <Separator />
 
-      {/* Upcoming events */}
+      {/* Your events */}
       <div>
-        <h2 className="mb-4 text-lg font-semibold">Upcoming Events</h2>
+        <h2 className="mb-4 text-lg font-semibold">Your Events</h2>
         <Card>
-          <CardContent className="flex flex-col items-center gap-4 py-16 text-center">
-            <CalendarDays className="h-12 w-12 text-muted-foreground/50" />
-            <div>
-              <p className="font-medium">No upcoming events</p>
-              <p className="text-sm text-muted-foreground">
-                When you purchase tickets, your events will show up here.
-              </p>
+          <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-16 text-center">
+            <div className="flex flex-col items-center gap-4">
+              <CalendarDays className="h-12 w-12 text-muted-foreground/50" />
+              <div>
+                <p className="font-medium">No upcoming events</p>
+                <p className="text-sm text-muted-foreground">
+                  When you purchase tickets, your events will show up here.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col items-center gap-4">
+              <ShoppingBag className="h-12 w-12 text-muted-foreground/50" />
+              <div>
+                <p className="font-medium">No orders yet</p>
+                <p className="text-sm text-muted-foreground">
+                  Your ticket purchases will appear here.
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
       {/* Recent orders */}
-      <div>
-        <h2 className="mb-4 text-lg font-semibold">Recent Orders</h2>
-        <Card>
-          <CardContent className="flex flex-col items-center gap-4 py-16 text-center">
-            <ShoppingBag className="h-12 w-12 text-muted-foreground/50" />
-            <div>
-              <p className="font-medium">No orders yet</p>
-              <p className="text-sm text-muted-foreground">
-                Your ticket purchases will appear here.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 }

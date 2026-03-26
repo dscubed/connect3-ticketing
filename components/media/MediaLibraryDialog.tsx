@@ -18,6 +18,9 @@ import {
   ImageIcon,
 } from "lucide-react";
 import Image from "next/image";
+import { AdminClubSelector } from "@/components/dashboard/AdminClubSelector";
+import { useAdminClubSelector } from "@/lib/hooks/useAdminClubSelector";
+import { useAuthStore } from "@/stores/authStore";
 
 /* ── Types ── */
 
@@ -48,6 +51,12 @@ interface MediaLibraryDialogProps {
   multiSelect?: boolean;
   /** Called when user confirms selection. */
   onSelect: (urls: string[]) => void;
+  /**
+   * When provided, Instagram images are fetched for this club directly
+   * (org dashboard context). When omitted, a club selector is shown on
+   * the Instagram tab so the user can choose which club to pull from.
+   */
+  clubId?: string;
 }
 
 /* ── Tab metadata ── */
@@ -87,6 +96,7 @@ export function MediaLibraryDialog({
   defaultTab = "images",
   multiSelect = false,
   onSelect,
+  clubId,
 }: MediaLibraryDialogProps) {
   const [activeTab, setActiveTab] = useState<MediaCategory>(defaultTab);
   const [items, setItems] = useState<MediaItem[]>([]);
@@ -100,6 +110,31 @@ export function MediaLibraryDialog({
   const [instagramImages, setInstagramImages] = useState<InstagramImage[]>([]);
   const [instagramLoading, setInstagramLoading] = useState(false);
   const [instagramFetched, setInstagramFetched] = useState(false);
+
+  /* Auth — determine whether this user is an organisation (they ARE the club) */
+  const { user, isOrganisation } = useAuthStore();
+  const isOrg = isOrganisation();
+
+  /*
+   * Club selector — only used when:
+   *   - no clubId prop is provided (not org-dashboard context), AND
+   *   - the user is NOT an organisation account
+   */
+  const {
+    clubs: adminClubs,
+    loading: clubsLoading,
+    selectedClubId: selectedInstagramClubId,
+    setSelectedClubId: setSelectedInstagramClubId,
+  } = useAdminClubSelector();
+
+  /*
+   * Resolve the effective club ID for Instagram fetching:
+   *   1. explicit clubId prop (org dashboard)
+   *   2. org account → own user ID
+   *   3. user account → selected club from AdminClubSelector
+   */
+  const effectiveClubId = clubId ?? (isOrg ? (user?.id ?? null) : selectedInstagramClubId);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -118,6 +153,8 @@ export function MediaLibraryDialog({
     if (open) {
       setSelected(new Set());
       offsetRef.current = 0;
+      setInstagramFetched(false);
+      setInstagramImages([]);
       fetchItems(activeTab, true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -131,6 +168,14 @@ export function MediaLibraryDialog({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
+
+  /* Auto-fetch Instagram images when effective club ID is ready */
+  useEffect(() => {
+    if (activeTab !== "instagram" || !open) return;
+    if (!effectiveClubId) return;
+    fetchInstagramImages(effectiveClubId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, open, effectiveClubId]);
 
   /* ── IntersectionObserver for scroll-based loading ── */
   useEffect(() => {
@@ -156,7 +201,7 @@ export function MediaLibraryDialog({
   const fetchItems = useCallback(
     async (category: MediaCategory, replace: boolean = false) => {
       if (category === "instagram") {
-        fetchInstagramImages();
+        // Instagram is handled separately via the tab effect / club selector
         return;
       }
       if (replace) {
@@ -233,11 +278,15 @@ export function MediaLibraryDialog({
   );
 
   /* ── Fetch Instagram images via API (admin key, no RLS) ── */
-  const fetchInstagramImages = useCallback(async () => {
-    if (instagramFetched) return;
+  const fetchInstagramImages = useCallback(async (forClubId?: string | null) => {
     setInstagramLoading(true);
+    setInstagramFetched(false);
     try {
-      const res = await fetch("/api/media/instagram");
+      const targetClub = forClubId ?? clubId ?? null;
+      const url = targetClub
+        ? `/api/media/instagram?club_id=${encodeURIComponent(targetClub)}`
+        : "/api/media/instagram";
+      const res = await fetch(url);
       if (!res.ok) {
         console.error("[MediaLib] Instagram fetch failed:", res.status);
         setInstagramImages([]);
@@ -252,7 +301,8 @@ export function MediaLibraryDialog({
     } finally {
       setInstagramLoading(false);
     }
-  }, [instagramFetched]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clubId]);
 
   /* ── Upload directly via Supabase client (no API proxy) ── */
   const handleUpload = useCallback(
@@ -427,10 +477,49 @@ export function MediaLibraryDialog({
 
           {/* Instagram tab */}
           <TabsContent value="instagram">
+            {/* Club selector — only shown for 'user' accounts without a clubId prop */}
+            {!clubId && !isOrg && (
+              <div className="pb-3">
+                {clubsLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading clubs…
+                  </div>
+                ) : adminClubs.length > 0 ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground shrink-0">Club:</span>
+                    <AdminClubSelector
+                      clubs={adminClubs}
+                      selectedClubId={selectedInstagramClubId}
+                      onSelect={(val) => {
+                        setSelectedInstagramClubId(val);
+                        setInstagramImages([]);
+                        fetchInstagramImages(val);
+                      }}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            )}
+
             {instagramLoading ? (
               <div className="flex justify-center py-12">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
+            ) : !instagramFetched ? (
+              /* No fetch triggered yet — only reachable for user accounts with no admin clubs */
+              !effectiveClubId && !clubsLoading ? (
+                <div className="flex flex-col items-center gap-3 py-12 text-center">
+                  <Instagram className="h-10 w-10 text-muted-foreground/40" />
+                  <p className="text-sm text-muted-foreground">
+                    You are not an admin of any clubs.
+                  </p>
+                </div>
+              ) : (
+                <div className="flex justify-center py-12">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              )
             ) : instagramImages.length === 0 ? (
               <div className="flex flex-col items-center gap-3 py-12 text-center">
                 <Instagram className="h-10 w-10 text-muted-foreground/40" />
@@ -481,6 +570,7 @@ export function MediaLibraryDialog({
                             <div className="rounded-full bg-primary p-1">
                               <Check className="h-4 w-4 text-primary-foreground" />
                             </div>
+
                           </div>
                         )}
                       </div>

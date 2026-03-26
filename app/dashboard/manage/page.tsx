@@ -101,6 +101,7 @@ function ManageContent() {
       <CreateEventModal
         open={createModalOpen}
         onOpenChange={setCreateModalOpen}
+        clubId={selectedClubId || undefined}
       />
 
       {/* ── Club selector ── */}
