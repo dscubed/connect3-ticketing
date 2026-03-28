@@ -30,12 +30,12 @@ const CHECKLIST_ITEMS: ChecklistItem[] = [
   {
     id: "start-date",
     label: "Add a start date",
-    check: (f) => !!f.startDate,
+    check: (f) => !!f.startDate || (f.isRecurring && f.occurrences.length > 0),
   },
   {
     id: "location",
     label: "Add a location",
-    check: (f) => !!f.location.displayName,
+    check: (f) => f.locationType !== "tba",
   },
   {
     id: "category",

@@ -310,11 +310,27 @@ async function reverseGeocode(
 /* ── Dialog pages ── */
 type DialogPage = "search" | "confirm" | "google-maps";
 
-type LocationPickerProps = EditInputProps<LocationData>;
+type LocationPickerProps = EditInputProps<LocationData> & {
+  /** When provided, the picker becomes a controlled modal (no trigger rendered). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+};
 
 /** Location picker with dialog-based Nominatim search + manual input. */
-export function LocationPicker({ value, onChange }: LocationPickerProps) {
-  const [open, setOpen] = useState(false);
+export function LocationPicker({ value, onChange, open: controlledOpen, onOpenChange: controlledOnOpenChange }: LocationPickerProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = useCallback(
+    (v: boolean) => {
+      if (isControlled) {
+        controlledOnOpenChange?.(v);
+      } else {
+        setInternalOpen(v);
+      }
+    },
+    [isControlled, controlledOnOpenChange],
+  );
   const [page, setPage] = useState<DialogPage>("search");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -348,7 +364,7 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
       setPage("search");
     }
     setOpen(true);
-  }, [hasValue, value.displayName, value.address, value.lat, value.lon]);
+  }, [hasValue, value.displayName, value.address, value.lat, value.lon, setOpen]);
 
   const handleSelectResult = useCallback((result: NominatimResult) => {
     const placeName = getPlaceName(result);
@@ -453,12 +469,12 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
       lon: draftLon,
     });
     setOpen(false);
-  }, [draftDisplayName, draftAddress, draftLat, draftLon, onChange]);
+  }, [draftDisplayName, draftAddress, draftLat, draftLon, onChange, setOpen]);
 
   const handleClear = useCallback(() => {
     onChange({ displayName: "", address: "" });
     setOpen(false);
-  }, [onChange]);
+  }, [onChange, setOpen]);
 
   const handleEnableLocation = useCallback(() => {
     if (!navigator.geolocation) {
@@ -491,35 +507,37 @@ export function LocationPicker({ value, onChange }: LocationPickerProps) {
 
   return (
     <>
-      {/* ── Trigger ── */}
-      <div className="flex min-w-0 items-center gap-3">
-        <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+      {/* ── Trigger (only when uncontrolled) ── */}
+      {!isControlled && (
+        <div className="flex min-w-0 items-center gap-3">
+          <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
 
-        {hasValue ? (
-          <button
-            type="button"
-            onClick={handleOpen}
-            className="flex min-w-0 flex-col gap-0.5 overflow-hidden text-left transition-colors hover:text-foreground"
-          >
-            <span className="w-full truncate text-sm font-medium text-foreground sm:text-base">
-              {value.displayName}
-            </span>
-            {value.address && (
-              <span className="w-full truncate text-xs text-muted-foreground sm:text-sm">
-                {value.address}
+          {hasValue ? (
+            <button
+              type="button"
+              onClick={handleOpen}
+              className="flex min-w-0 flex-col gap-0.5 overflow-hidden text-left transition-colors hover:text-foreground"
+            >
+              <span className="w-full truncate text-sm font-medium text-foreground sm:text-base">
+                {value.displayName}
               </span>
-            )}
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={handleOpen}
-            className="text-left text-base text-muted-foreground transition-colors hover:text-foreground"
-          >
-            TBA
-          </button>
-        )}
-      </div>
+              {value.address && (
+                <span className="w-full truncate text-xs text-muted-foreground sm:text-sm">
+                  {value.address}
+                </span>
+              )}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleOpen}
+              className="text-left text-base text-muted-foreground transition-colors hover:text-foreground"
+            >
+              TBA
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── Modal ── */}
       <ResponsiveModal

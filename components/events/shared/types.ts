@@ -13,12 +13,26 @@ export interface PreviewInputProps<T> {
 
 /* ── Shared event types ── */
 
+export type LocationType = "physical" | "custom" | "online" | "tba";
+
+export interface OccurrenceFormData {
+  id: string; // nanoid for new, DB UUID for existing
+  name?: string; // optional label e.g. "Pitch Day", "Competition Day 1"
+  startDate: string; // YYYY-MM-DD
+  startTime: string; // HH:MM
+  endDate: string; // YYYY-MM-DD
+  endTime: string; // HH:MM
+  venueIds?: string[]; // references to Venue.id
+}
+
 export interface DateTimeData {
   startDate: string; // YYYY-MM-DD
   startTime: string; // HH:MM
   endDate: string;
   endTime: string;
   timezone: string; // IANA tz
+  /** Number of additional occurrences beyond the displayed date (for recurring events) */
+  extraOccurrences?: number;
 }
 
 export interface LocationData {
@@ -28,6 +42,14 @@ export interface LocationData {
   lat?: number;
   /** Longitude from geocoding — present when selected from search results */
   lon?: number;
+}
+
+/** A named venue that an event can use. Events support multiple venues. */
+export interface Venue {
+  id: string; // nanoid for new, DB UUID for existing
+  type: LocationType;
+  location: LocationData; // displayName, address, lat, lon
+  onlineLink?: string; // for online venues
 }
 
 export interface ClubProfile {
@@ -226,6 +248,16 @@ export interface EventFormData {
   timezone: string;
   location: LocationData;
   isOnline: boolean;
+  /** Location type: physical (map), custom (manual), online (link), tba (unset) */
+  locationType: LocationType;
+  /** Meeting URL for online events */
+  onlineLink: string;
+  /** Multiple venues for this event. Occurrences can reference these by id. */
+  venues: Venue[];
+  /** Whether this event has multiple occurrences */
+  isRecurring: boolean;
+  /** Individual occurrences for recurring events */
+  occurrences: OccurrenceFormData[];
   category: string;
   tags: string[];
   hostIds: string[];

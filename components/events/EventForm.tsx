@@ -4,6 +4,9 @@ import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 import { Separator } from "@/components/ui/separator";
+import { ResponsiveModal } from "@/components/ui/responsive-modal";
+import { Pencil } from "lucide-react";
+import { nanoid } from "nanoid";
 import { cn } from "@/lib/utils";
 
 /* ── Shared ── */
@@ -12,6 +15,7 @@ import type {
   EventFormData,
   CarouselImage,
   EventTheme,
+  Venue,
 } from "./shared/types";
 import {
   DEFAULT_THEME,
@@ -33,6 +37,8 @@ import {
   EventDescriptionField,
   EventSectionField,
 } from "./fields";
+import { DateLocationSection } from "./create/DateLocationSection";
+import { EventDetailModal } from "./preview/EventDetailModal";
 
 /* ── Create-only UI (dialogs) ── */
 import { ImageManagerDialog } from "./create/ImageManagerDialog";
@@ -225,6 +231,8 @@ export default function EventForm({
     initialTicketingEnabled,
   );
   const [pricingModalOpen, setPricingModalOpen] = useState(false);
+  const [dateLocationModalOpen, setDateLocationModalOpen] = useState(false);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
 
   const [ticketingChanging, setTicketingChanging] = useState(false);
@@ -242,9 +250,14 @@ export default function EventForm({
       endTime: "event",
       timezone: "event",
       isOnline: "event",
+      isRecurring: "event",
+      locationType: "location",
+      onlineLink: "location",
+      venues: "location",
       category: "event",
       tags: "event",
       location: "location",
+      occurrences: "occurrences",
       imageUrls: "images",
       hostIds: "hosts",
       pricing: "pricing",
@@ -263,7 +276,6 @@ export default function EventForm({
   /* ── Checklist scroll-to refs ── */
   const thumbnailRef = useRef<HTMLDivElement>(null);
   const startDateRef = useRef<HTMLDivElement>(null);
-  const locationRef = useRef<HTMLDivElement>(null);
   const categoryRef = useRef<HTMLDivElement>(null);
   const tagsRef = useRef<HTMLDivElement>(null);
   const faqsRef = useRef<HTMLDivElement>(null);
@@ -272,7 +284,7 @@ export default function EventForm({
     () => ({
       thumbnail: thumbnailRef,
       "start-date": startDateRef,
-      location: locationRef,
+      location: startDateRef, // Date + location now share one section
       category: categoryRef,
       tags: tagsRef,
       faqs: faqsRef,
@@ -291,6 +303,20 @@ export default function EventForm({
       initialData?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
     location: initialData?.location ?? { displayName: "", address: "" },
     isOnline: initialData?.isOnline ?? false,
+    locationType: initialData?.locationType ?? "tba",
+    onlineLink: initialData?.onlineLink ?? "",
+    venues:
+      initialData?.venues && initialData.venues.length > 0
+        ? initialData.venues
+        : [
+            {
+              id: nanoid(),
+              type: "tba" as const,
+              location: { displayName: "", address: "" },
+            },
+          ],
+    isRecurring: initialData?.isRecurring ?? false,
+    occurrences: initialData?.occurrences ?? [],
     category: initialData?.category ?? "",
     tags: initialData?.tags ?? [],
     hostIds: initialData?.hostIds ?? [],
@@ -434,7 +460,7 @@ export default function EventForm({
 
   /* ── Attention badge helpers ── */
   const needsStartDate = !form.startDate;
-  const needsLocation = !form.location.displayName;
+  const needsLocation = form.locationType === "tba";
   const needsCategory = !form.category;
   const needsTags = form.tags.length < 2;
 
@@ -510,6 +536,8 @@ export default function EventForm({
                   result.formData.timezone ??
                   Intl.DateTimeFormat().resolvedOptions().timeZone,
                 isOnline: result.formData.isOnline ?? false,
+                isRecurring: result.formData.isRecurring ?? false,
+                locationType: result.formData.locationType ?? "tba",
                 category: result.formData.category ?? "",
                 tags: result.formData.tags ?? [],
               }));
@@ -522,6 +550,15 @@ export default function EventForm({
                   address: "",
                 },
                 isOnline: result.formData.isOnline ?? false,
+                locationType: result.formData.locationType ?? "tba",
+                onlineLink: result.formData.onlineLink ?? "",
+              }));
+              break;
+            case "occurrences":
+              setForm((prev) => ({
+                ...prev,
+                occurrences: result.formData.occurrences ?? [],
+                isRecurring: result.formData.isRecurring ?? false,
               }));
               break;
             case "images":
@@ -946,47 +983,168 @@ export default function EventForm({
                 <div className="space-y-3">
                   <div
                     ref={startDateRef}
-                    className={cn("relative", isEditing && "w-fit")}
-                  >
-                    {isEditing && <AttentionBadge show={needsStartDate} />}
-                    <EventDateField
-                      mode={viewMode}
-                      value={{
-                        startDate: form.startDate,
-                        startTime: form.startTime,
-                        endDate: form.endDate,
-                        endTime: form.endTime,
-                        timezone: form.timezone,
-                      }}
-                      onChange={(d) => {
-                        setForm((prev) => ({
-                          ...prev,
-                          startDate: d.startDate,
-                          startTime: d.startTime,
-                          endDate: d.endDate,
-                          endTime: d.endTime,
-                          timezone: d.timezone,
-                        }));
-                        markDirty("event");
-                      }}
-                    />
-                  </div>
-                  <div
-                    ref={locationRef}
-                    className={cn("relative", isEditing && "w-fit")}
+                    className="relative"
                     onFocus={() => handleFieldFocus("location")}
                     onBlur={handleFieldBlur}
                   >
-                    {isEditing && <AttentionBadge show={needsLocation} />}
+                    {isEditing && (
+                      <AttentionBadge
+                        show={needsStartDate || needsLocation}
+                      />
+                    )}
                     <CollaboratorBadge
                       group="location"
                       collaborators={collaborators}
                     />
-                    <EventLocationField
-                      mode={viewMode}
-                      value={form.location}
-                      onChange={(loc) => updateField("location", loc)}
-                    />
+                    <div className="space-y-3">
+                      {isEditing ? (
+                        <>
+                          {/* Edit mode: preview-style display, click to open modal editor */}
+                          <button
+                            type="button"
+                            onClick={() => setDateLocationModalOpen(true)}
+                            className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 -mx-2 text-left transition-colors hover:bg-muted/50"
+                          >
+                            <EventDateField
+                              mode="preview"
+                              value={{
+                                startDate: form.startDate,
+                                startTime: form.startTime,
+                                endDate: form.endDate,
+                                endTime: form.endTime,
+                                timezone: form.timezone,
+                                extraOccurrences:
+                                  form.occurrences.length > 1
+                                    ? form.occurrences.length - 1
+                                    : undefined,
+                              }}
+                            />
+                            <Pencil className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDateLocationModalOpen(true)}
+                            className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 -mx-2 text-left transition-colors hover:bg-muted/50"
+                          >
+                            <EventLocationField
+                              mode="preview"
+                              value={form.location}
+                              extraVenues={
+                                form.venues.filter((v) => v.type !== "tba").length > 1
+                                  ? form.venues.filter((v) => v.type !== "tba").length - 1
+                                  : undefined
+                              }
+                            />
+                            <Pencil className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                          </button>
+                          <ResponsiveModal
+                            open={dateLocationModalOpen}
+                            onOpenChange={setDateLocationModalOpen}
+                            title="Date & location"
+                            className="max-w-lg"
+                          >
+                            <div className="overflow-y-auto max-h-[70vh] pr-1">
+                              <DateLocationSection
+                                timezone={form.timezone}
+                                occurrences={form.occurrences}
+                                locationType={form.locationType}
+                                location={form.location}
+                                onlineLink={form.onlineLink}
+                                venues={form.venues}
+                                onTimezoneChange={(tz) => {
+                                  setForm((prev) => ({ ...prev, timezone: tz }));
+                                  markDirty("event", "location");
+                                }}
+                                onLocationChange={(partial) => {
+                                  setForm((prev) => ({
+                                    ...prev,
+                                    ...partial,
+                                    isOnline:
+                                      (partial.locationType ?? form.locationType) ===
+                                      "online",
+                                  }));
+                                  markDirty("event", "location");
+                                }}
+                                onVenuesChange={(venues) => {
+                                  setForm((prev) => ({ ...prev, venues }));
+                                  markDirty("event", "location");
+                                }}
+                                onOccurrencesChange={(occs) => {
+                                  // Auto-derive backward-compat fields from occurrences
+                                  const sorted = [...occs].sort(
+                                    (a, b) =>
+                                      a.startDate.localeCompare(b.startDate) ||
+                                      a.startTime.localeCompare(b.startTime),
+                                  );
+                                  const first = sorted[0];
+                                  setForm((prev) => ({
+                                    ...prev,
+                                    occurrences: occs,
+                                    isRecurring: occs.length > 1,
+                                    startDate: first?.startDate ?? "",
+                                    startTime: first?.startTime ?? "",
+                                    endDate: first?.endDate ?? "",
+                                    endTime: first?.endTime ?? "",
+                                  }));
+                                  markDirty("event", "occurrences", "location");
+                                }}
+                              />
+                            </div>
+                          </ResponsiveModal>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setDetailModalOpen(true)}
+                            className="flex w-full items-center text-left rounded-md px-2 py-1.5 -mx-2 transition-colors hover:bg-muted/50 cursor-pointer"
+                          >
+                            <EventDateField
+                              mode="preview"
+                              value={{
+                                startDate: form.startDate,
+                                startTime: form.startTime,
+                                endDate: form.endDate,
+                                endTime: form.endTime,
+                                timezone: form.timezone,
+                                extraOccurrences:
+                                  form.occurrences.length > 1
+                                    ? form.occurrences.length - 1
+                                    : undefined,
+                              }}
+                            />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDetailModalOpen(true)}
+                            className="flex w-full items-center text-left rounded-md px-2 py-1.5 -mx-2 transition-colors hover:bg-muted/50 cursor-pointer"
+                          >
+                            <EventLocationField
+                              mode="preview"
+                              value={form.location}
+                              extraVenues={
+                                form.venues.filter((v) => v.type !== "tba").length > 1
+                                  ? form.venues.filter((v) => v.type !== "tba").length - 1
+                                  : undefined
+                              }
+                            />
+                          </button>
+                          <EventDetailModal
+                            open={detailModalOpen}
+                            onOpenChange={setDetailModalOpen}
+                            dateTime={{
+                              startDate: form.startDate,
+                              startTime: form.startTime,
+                              endDate: form.endDate,
+                              endTime: form.endTime,
+                              timezone: form.timezone,
+                            }}
+                            venues={form.venues}
+                            occurrences={form.occurrences}
+                          />
+                        </>
+                      )}
+                    </div>
                   </div>
                   <div
                     onFocus={() => handleFieldFocus("hosts")}

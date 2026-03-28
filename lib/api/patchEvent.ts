@@ -12,6 +12,7 @@ import type { SectionType } from "@/components/events/sections/types";
 export type FieldGroup =
   | "event"
   | "location"
+  | "occurrences"
   | "images"
   | "hosts"
   | "pricing"
@@ -39,7 +40,9 @@ function buildPatchBody(
     body.endDate = form.endDate;
     body.endTime = form.endTime;
     body.timezone = form.timezone;
-    body.isOnline = form.isOnline;
+    body.isOnline = form.locationType === "online";
+    body.locationType = form.locationType;
+    body.isRecurring = form.isRecurring;
     body.category = form.category;
     body.tags = form.tags;
     if (status !== undefined) body.status = status;
@@ -47,7 +50,15 @@ function buildPatchBody(
 
   if (groups.includes("location")) {
     body.location = form.location;
-    body.isOnline = form.isOnline;
+    body.isOnline = form.locationType === "online";
+    body.locationType = form.locationType;
+    body.onlineLink = form.onlineLink;
+    body.venues = form.venues;
+  }
+
+  if (groups.includes("occurrences")) {
+    body.occurrences = form.occurrences;
+    body.timezone = form.timezone;
   }
 
   if (groups.includes("images")) {

@@ -32,11 +32,14 @@ type DateDisplayProps = PreviewInputProps<DateTimeData>;
 export function DateDisplay({ value }: DateDisplayProps) {
   const hasStart = !!value.startDate;
   const hasEnd = !!value.endDate;
+  const extra = value.extraOccurrences ?? 0;
 
   let displayText = "TBA";
   if (hasStart) {
     displayText = formatCompactDate(value.startDate, value.startTime);
-    if (hasEnd) {
+    if (extra > 0) {
+      displayText += ` + ${extra} more`;
+    } else if (hasEnd) {
       displayText += `  →  ${formatCompactDate(value.endDate, value.endTime)}`;
     }
   }

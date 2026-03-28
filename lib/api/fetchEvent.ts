@@ -5,7 +5,10 @@ import type {
   EventLink,
   EventTheme,
   LocationData,
+  LocationType,
+  OccurrenceFormData,
   ClubProfile,
+  Venue,
 } from "@/components/events/shared/types";
 import { DEFAULT_THEME } from "@/components/events/shared/types";
 import type { SectionData } from "@/components/events/sections/types";
@@ -72,6 +75,13 @@ interface RawLocation {
   longitude: number | null;
 }
 
+interface RawOccurrence {
+  id: string;
+  name: string | null;
+  start: string;
+  end: string | null;
+}
+
 interface RawEvent {
   id: string;
   name: string | null;
@@ -80,6 +90,9 @@ interface RawEvent {
   end: string | null;
   timezone: string | null;
   is_online: boolean;
+  location_type: string | null;
+  online_link: string | null;
+  is_recurring: boolean;
   category: string | null;
   tags: string[] | null;
   status: string;
@@ -93,6 +106,7 @@ interface RawEvent {
   links: RawLink[];
   theme: RawTheme | null;
   sections: RawSection[];
+  occurrences: RawOccurrence[];
   ticketing: { enabled: boolean } | null;
 }
 
@@ -149,6 +163,59 @@ export async function fetchEvent(eventId: string): Promise<FetchedEventData> {
     lat: loc?.latitude ?? undefined,
     lon: loc?.longitude ?? undefined,
   };
+
+  /* ── Location type (derive from is_online + location_id if column is null) ── */
+  let locationType: LocationType = (data.location_type as LocationType) ?? "tba";
+  if (!data.location_type) {
+    if (data.is_online) locationType = "online";
+    else if (data.event_locations) locationType = "physical";
+    else locationType = "tba";
+  }
+
+  /* ── Venues (derive from legacy single-location for backward compat) ── */
+  const venues: Venue[] = [];
+  if (locationType === "online") {
+    venues.push({
+      id: loc?.id ?? "venue-online",
+      type: "online",
+      location: { displayName: "", address: "" },
+      onlineLink: data.online_link ?? "",
+    });
+  } else if (locationType !== "tba" && location.displayName) {
+    venues.push({
+      id: loc?.id ?? "venue-primary",
+      type: locationType,
+      location,
+    });
+  }
+
+  /* ── Occurrences ── */
+  const occurrences: OccurrenceFormData[] = (data.occurrences ?? []).map((o) => {
+    const s = splitUtcTimestampInTimeZone(o.start, eventTimeZone);
+    const e = o.end
+      ? splitUtcTimestampInTimeZone(o.end, eventTimeZone)
+      : { date: s.date, time: "" };
+    return {
+      id: o.id,
+      name: o.name ?? undefined,
+      startDate: s.date,
+      startTime: s.time,
+      endDate: e.date,
+      endTime: e.time,
+    };
+  });
+
+  // Legacy backward compat: synthesize one occurrence from the event's
+  // start/end dates when the DB has no occurrences yet.
+  if (occurrences.length === 0 && startDate) {
+    occurrences.push({
+      id: `legacy-${data.id}`,
+      startDate,
+      startTime,
+      endDate,
+      endTime,
+    });
+  }
 
   /* ── Creator profile (fetch separately — owner is not in event_hosts) ── */
   let creatorProfile: ClubProfile | undefined;
@@ -256,6 +323,11 @@ export async function fetchEvent(eventId: string): Promise<FetchedEventData> {
     timezone: eventTimeZone,
     location,
     isOnline: data.is_online,
+    locationType,
+    onlineLink: data.online_link ?? "",
+    venues,
+    isRecurring: occurrences.length > 1,
+    occurrences,
     category: data.category ?? "",
     tags: data.tags ?? [],
     hostIds,

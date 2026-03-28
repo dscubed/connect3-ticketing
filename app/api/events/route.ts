@@ -427,6 +427,9 @@ export async function POST(request: NextRequest) {
     const endTime: string | null = body.endTime || null;
     const timezone: string | null = body.timezone || null;
     const isOnline: boolean = body.isOnline ?? false;
+    const locationType: string = body.locationType ?? (isOnline ? "online" : "tba");
+    const onlineLink: string | null = body.onlineLink || null;
+    const isRecurring: boolean = body.isRecurring ?? false;
     const category: string | null = body.category || null;
     const tags: string[] = body.tags ?? [];
     const pricing: TicketTierPayload[] = body.pricing ?? [];
@@ -448,6 +451,7 @@ export async function POST(request: NextRequest) {
     const location: LocationPayload | null = body.location ?? null;
     const imageUrls: string[] = body.imageUrls ?? [];
     const sections: SectionPayload[] = body.sections ?? [];
+    const occurrencesInput: { startDate: string; startTime: string; endDate: string; endTime: string }[] = body.occurrences ?? [];
 
     /* Name is required only when publishing */
     if (eventStatus === "published" && !name) {
@@ -474,14 +478,14 @@ export async function POST(request: NextRequest) {
 
     /* ── Insert location ── */
     let locationId: string | null = null;
-    if (location?.displayName && !isOnline) {
+    if (location?.displayName && (locationType === "physical" || locationType === "custom")) {
       const { data: loc, error: locErr } = await supabaseAdmin
         .from("event_locations")
         .insert({
           venue: location.displayName,
           address: location.address || null,
-          latitude: location.lat ?? null,
-          longitude: location.lon ?? null,
+          latitude: locationType === "physical" ? (location.lat ?? null) : null,
+          longitude: locationType === "physical" ? (location.lon ?? null) : null,
         })
         .select("id")
         .single();
@@ -518,7 +522,10 @@ export async function POST(request: NextRequest) {
       status: eventStatus,
       published_at:
         eventStatus === "published" ? new Date().toISOString() : null,
-      is_online: isOnline,
+      is_online: locationType === "online",
+      location_type: locationType,
+      online_link: locationType === "online" ? onlineLink : null,
+      is_recurring: isRecurring,
       thumbnail,
       location_id: locationId,
       category,
@@ -607,6 +614,17 @@ export async function POST(request: NextRequest) {
       }));
       const { error } = await supabaseAdmin.from("event_sections").insert(rows);
       if (error) console.error("event_sections insert error:", error);
+    }
+
+    /* ── Insert occurrences ── */
+    if (occurrencesInput.length > 0) {
+      const occRows = occurrencesInput.map((o) => ({
+        event_id: eventId,
+        start: buildUtcTimestamp(o.startDate, o.startTime, timezone),
+        end: buildUtcTimestamp(o.endDate, o.endTime, timezone),
+      }));
+      const { error } = await supabaseAdmin.from("event_occurrences").insert(occRows);
+      if (error) console.error("event_occurrences insert error:", error);
     }
 
     return NextResponse.json(

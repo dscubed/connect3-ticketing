@@ -31,7 +31,10 @@ export async function createEvent(
     endDate: form.endDate,
     endTime: form.endTime,
     timezone: form.timezone,
-    isOnline: form.isOnline,
+    isOnline: form.locationType === "online",
+    locationType: form.locationType,
+    onlineLink: form.onlineLink,
+    isRecurring: form.isRecurring,
     category: form.category,
     tags: form.tags,
     hostIds: form.hostIds,
@@ -49,10 +52,19 @@ export async function createEvent(
     links: form.links.map((l) => ({ url: l.url, title: l.title })),
     theme: form.theme,
     location: form.location,
+    venues: form.venues,
     imageUrls: images
       .filter((img) => img.url && !img.uploading)
       .map((img) => img.url),
     sections: sections.map((s) => ({ type: s.type, data: s })),
+    occurrences: form.occurrences.map((o) => ({
+      name: o.name,
+      startDate: o.startDate,
+      startTime: o.startTime,
+      endDate: o.endDate,
+      endTime: o.endTime,
+      venueIds: o.venueIds,
+    })),
   };
 
   const res = await fetch("/api/events", {
