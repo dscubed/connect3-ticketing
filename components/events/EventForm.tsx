@@ -881,7 +881,7 @@ export default function EventForm({
       <EditorToolbox
           eventId={eventId}
                     initialUrlSlug={initialUrlSlug}
-        mode={viewMode}
+        mode={eventId ? "edit" : "create"}
         isDark={isDark}
         toolbarCollapsed={toolbarCollapsed}
         setToolbarCollapsed={setToolbarCollapsed}

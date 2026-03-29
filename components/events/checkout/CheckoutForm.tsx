@@ -161,6 +161,28 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
   const [quantity, setQuantity] = useState(1);
   const [activeTicketTab, setActiveTicketTab] = useState("ticket-0");
 
+  /* ── Attendee data: attendeeData[ticketIndex][fieldKey] = value ── */
+  const [attendeeData, setAttendeeData] = useState<
+    Record<number, Record<string, string>>
+  >({});
+
+  const getFieldValue = (ticketIndex: number, fieldKey: string): string =>
+    attendeeData[ticketIndex]?.[fieldKey] ?? "";
+
+  const setFieldValue = (
+    ticketIndex: number,
+    fieldKey: string,
+    value: string,
+  ) => {
+    setAttendeeData((prev) => ({
+      ...prev,
+      [ticketIndex]: {
+        ...(prev[ticketIndex] ?? {}),
+        [fieldKey]: value,
+      },
+    }));
+  };
+
   const isEditing = !previewMode;
 
   /* ── Load event data ── */
@@ -421,31 +443,33 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
       className={cn("min-h-screen pb-12", pageBgClass, isDark && "dark")}
       style={solidBg ? { backgroundColor: solidBg } : undefined}
     >
-      <EditorToolbox
-        eventId={eventId}
-        mode={mode}
-        isDark={isDark}
-        toolbarCollapsed={toolbarCollapsed}
-        setToolbarCollapsed={setToolbarCollapsed}
-        onBack={() => router.push(`/events/${eventId}/edit`)}
-        isAutoSaving={savingFields}
-        lastSavedAt={lastSavedAt}
-        LastSavedLabelComponent={
-          lastSavedAt ? <LastSavedLabel date={lastSavedAt} /> : null
-        }
-        collaboratorCount={collaborators.size}
-        previewMode={previewMode}
-        setPreviewMode={setPreviewMode}
-        eventStatus={undefined} // Not handling publish from checkout for now
-        ticketingEnabled={ticketingEnabled}
-        ticketingChanging={disablingTicketing || enablingTicketing}
-        onEnableTicketing={handleEnableTicketing}
-        onDisableTicketing={handleDisableTicketing}
-      />
+      {mode !== "preview" && (
+        <EditorToolbox
+          eventId={eventId}
+          mode={mode}
+          isDark={isDark}
+          toolbarCollapsed={toolbarCollapsed}
+          setToolbarCollapsed={setToolbarCollapsed}
+          onBack={() => router.push(`/events/${eventId}/edit`)}
+          isAutoSaving={savingFields}
+          lastSavedAt={lastSavedAt}
+          LastSavedLabelComponent={
+            lastSavedAt ? <LastSavedLabel date={lastSavedAt} /> : null
+          }
+          collaboratorCount={collaborators.size}
+          previewMode={previewMode}
+          setPreviewMode={setPreviewMode}
+          eventStatus={undefined} // Not handling publish from checkout for now
+          ticketingEnabled={ticketingEnabled}
+          ticketingChanging={disablingTicketing || enablingTicketing}
+          onEnableTicketing={handleEnableTicketing}
+          onDisableTicketing={handleDisableTicketing}
+        />
+      )}
 
       {/* Preview mode — back button */}
       {mode === "preview" && (
-        <div className="mx-auto max-w-3xl px-3 pt-4 sm:px-6">
+        <div className="mx-auto max-w-3xl px-3 py-2 sm:px-6">
           <Button
             variant="ghost"
             size="sm"
@@ -756,6 +780,14 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
                                         colors.inputBorder,
                                         colors.placeholder,
                                       )}
+                                      value={getFieldValue(i, field.key)}
+                                      onChange={(e) =>
+                                        setFieldValue(
+                                          i,
+                                          field.key,
+                                          e.target.value,
+                                        )
+                                      }
                                     />
                                   </div>
                                 ))}
@@ -774,6 +806,10 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
                                       key={field.id}
                                       field={field}
                                       colors={colors}
+                                      value={getFieldValue(i, field.id)}
+                                      onChange={(val) =>
+                                        setFieldValue(i, field.id, val)
+                                      }
                                     />
                                   ))}
                                 </div>
@@ -810,6 +846,10 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
                                   colors.inputBorder,
                                   colors.placeholder,
                                 )}
+                                value={getFieldValue(0, field.key)}
+                                onChange={(e) =>
+                                  setFieldValue(0, field.key, e.target.value)
+                                }
                               />
                             </div>
                           ))}
@@ -828,6 +868,10 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
                                 key={field.id}
                                 field={field}
                                 colors={colors}
+                                value={getFieldValue(0, field.id)}
+                                onChange={(val) =>
+                                  setFieldValue(0, field.id, val)
+                                }
                               />
                             ))}
                           </div>

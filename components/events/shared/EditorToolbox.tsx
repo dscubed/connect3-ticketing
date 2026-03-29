@@ -34,7 +34,7 @@ import { cn } from "@/lib/utils";
 
 interface EditorToolboxProps {
   eventId?: string;
-  mode: "create" | "edit" | "preview";
+  mode: "create" | "edit";
   isDark: boolean;
 
   toolbarCollapsed: boolean;
@@ -218,17 +218,6 @@ export function EditorToolbox({
     }
     setTicketingAlertOpen(false);
   };
-
-  if (mode === "preview" && !onPublish) {
-    return (
-      <div className="mx-auto max-w-3xl px-3 pt-4 sm:px-6">
-        <Button variant="ghost" size="sm" className="gap-2" onClick={onBack}>
-          <ArrowLeft className="h-4 w-4" />
-          Back to Event
-        </Button>
-      </div>
-    );
-  }
 
   return (
     <>

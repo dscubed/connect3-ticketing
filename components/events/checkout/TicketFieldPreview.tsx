@@ -19,14 +19,30 @@ import type { ThemeColors } from "@/components/events/shared/types";
 interface TicketFieldPreviewProps {
   field: TicketingFieldDraft;
   colors: ThemeColors;
+  /** Current field value (multiselect stored as comma-separated) */
+  value: string;
+  onChange: (value: string) => void;
 }
 
-/**
- * Renders a single custom ticket field in "preview" (checkout) mode.
- * Inputs are interactive but don't persist — purely visual.
- */
-export function TicketFieldPreview({ field, colors }: TicketFieldPreviewProps) {
+export function TicketFieldPreview({
+  field,
+  colors,
+  value,
+  onChange,
+}: TicketFieldPreviewProps) {
   const inputClass = cn(colors.inputBg, colors.inputBorder, colors.placeholder);
+
+  // Multiselect: comma-separated selected options
+  const selectedOptions = field.input_type === "multiselect"
+    ? value.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
+
+  const toggleOption = (opt: string) => {
+    const next = selectedOptions.includes(opt)
+      ? selectedOptions.filter((o) => o !== opt)
+      : [...selectedOptions, opt];
+    onChange(next.join(","));
+  };
 
   return (
     <div className="space-y-1.5">
@@ -39,6 +55,8 @@ export function TicketFieldPreview({ field, colors }: TicketFieldPreviewProps) {
         <Input
           placeholder={field.placeholder || field.label}
           className={inputClass}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
         />
       )}
 
@@ -47,6 +65,8 @@ export function TicketFieldPreview({ field, colors }: TicketFieldPreviewProps) {
           placeholder={field.placeholder || field.label}
           rows={3}
           className={inputClass}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
         />
       )}
 
@@ -55,15 +75,22 @@ export function TicketFieldPreview({ field, colors }: TicketFieldPreviewProps) {
           type="number"
           placeholder={field.placeholder || "0"}
           className={inputClass}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
         />
       )}
 
       {field.input_type === "date" && (
-        <Input type="date" className={inputClass} />
+        <Input
+          type="date"
+          className={inputClass}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
       )}
 
       {field.input_type === "select" && (
-        <Select>
+        <Select value={value} onValueChange={onChange}>
           <SelectTrigger className={inputClass}>
             <SelectValue placeholder={field.placeholder || "Select…"} />
           </SelectTrigger>
@@ -79,19 +106,23 @@ export function TicketFieldPreview({ field, colors }: TicketFieldPreviewProps) {
 
       {field.input_type === "multiselect" && (
         <div className="flex flex-wrap gap-1.5 rounded-md border p-2">
-          {field.options.map((opt, i) => (
-            <Badge
-              key={i}
-              variant="outline"
-              className={cn(
-                "cursor-pointer select-none transition-colors",
-                colors.hoverBg,
-                colors.isDark && "border-neutral-600",
-              )}
-            >
-              {opt}
-            </Badge>
-          ))}
+          {field.options.map((opt, i) => {
+            const active = selectedOptions.includes(opt);
+            return (
+              <Badge
+                key={i}
+                variant={active ? "default" : "outline"}
+                className={cn(
+                  "cursor-pointer select-none transition-colors",
+                  !active && colors.hoverBg,
+                  !active && colors.isDark && "border-neutral-600",
+                )}
+                onClick={() => toggleOption(opt)}
+              >
+                {opt}
+              </Badge>
+            );
+          })}
           {field.options.length === 0 && (
             <span className="text-xs text-muted-foreground">No options</span>
           )}
@@ -102,13 +133,16 @@ export function TicketFieldPreview({ field, colors }: TicketFieldPreviewProps) {
         <div className="flex items-center gap-3 pt-1">
           <span className="text-xs text-muted-foreground">1</span>
           <Slider
-            defaultValue={[5]}
+            value={[value ? Number(value) : 5]}
+            onValueChange={([v]) => onChange(String(v))}
             min={1}
             max={10}
             step={1}
             className="flex-1"
           />
-          <span className="text-xs text-muted-foreground">10</span>
+          <span className="text-xs text-muted-foreground">
+            {value || "5"}
+          </span>
         </div>
       )}
     </div>
