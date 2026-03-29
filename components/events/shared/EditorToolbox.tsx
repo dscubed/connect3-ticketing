@@ -31,67 +31,35 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { ResponsiveModal } from "@/components/ui/responsive-modal";
 import { cn } from "@/lib/utils";
+import { useEventEditor, LastSavedLabel } from "./EventEditorContext";
 
-interface EditorToolboxProps {
-  eventId?: string;
-  mode: "create" | "edit";
-  isDark: boolean;
+export function EditorToolbox() {
+  const {
+    eventId,
+    mode,
+    initialUrlSlug,
+    isDark,
+    toolbarCollapsed,
+    setToolbarCollapsed,
+    handleBack,
+    flush,
+    isAutoSaving,
+    lastSavedAt,
+    collaborators,
+    setThemeOpen,
+    previewMode,
+    setPreviewMode,
+    eventStatus,
+    hasName,
+    savingPublish,
+    handlePublish,
+    handleUnpublish,
+    ticketingEnabled,
+    ticketingChanging,
+    enableTicketing,
+    disableTicketing,
+  } = useEventEditor();
 
-  toolbarCollapsed: boolean;
-  setToolbarCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
-
-  onBack: () => void;
-  onFlush?: () => Promise<void>;
-
-  isAutoSaving?: boolean;
-  lastSavedAt?: Date | null;
-  LastSavedLabelComponent?: React.ReactNode;
-  collaboratorCount?: number;
-
-  setThemeOpen?: (open: boolean) => void;
-  previewMode: boolean;
-  setPreviewMode: React.Dispatch<React.SetStateAction<boolean>>;
-
-  eventStatus?: "draft" | "published" | "archived";
-  hasName?: boolean;
-  savingPublish?: boolean;
-  onPublish?: () => void;
-  onUnpublish?: () => void;
-
-  initialUrlSlug?: string | null;
-
-  ticketingEnabled?: boolean;
-  ticketingChanging?: boolean;
-  onEnableTicketing?: () => void;
-  onDisableTicketing?: () => void;
-}
-
-export function EditorToolbox({
-  eventId,
-  mode,
-  isDark,
-  toolbarCollapsed,
-  setToolbarCollapsed,
-  onBack,
-  onFlush,
-  isAutoSaving,
-  lastSavedAt,
-  LastSavedLabelComponent,
-  collaboratorCount = 0,
-  setThemeOpen,
-  previewMode,
-  setPreviewMode,
-  eventStatus,
-  hasName,
-  savingPublish,
-  onPublish,
-  onUnpublish,
-  initialUrlSlug,
-  ticketingEnabled,
-  ticketingChanging,
-  onEnableTicketing,
-  onDisableTicketing,
-}: EditorToolboxProps) {
   const router = useRouter();
   const pathname = usePathname();
 
@@ -115,18 +83,14 @@ export function EditorToolbox({
   const [savingSlug, setSavingSlug] = useState(false);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Validate and format slug as user types
   const handleSlugChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Map spaces to _, lower case, restrict to letters, numbers, dash, underscore
-    const rawValue = e.target.value;
-    const formatted = rawValue
+    const formatted = e.target.value
       .toLowerCase()
       .replace(/\s+/g, "_")
       .replace(/[^a-z0-9_-]/g, "");
 
     setUrlSlug(formatted);
 
-    // Initial resets
     if (formatted === initialUrlSlug) {
       setSlugStatus("idle");
       if (typingTimer.current) clearTimeout(typingTimer.current);
@@ -140,10 +104,7 @@ export function EditorToolbox({
     }
 
     setSlugStatus("checking");
-
-    if (typingTimer.current) {
-      clearTimeout(typingTimer.current);
-    }
+    if (typingTimer.current) clearTimeout(typingTimer.current);
 
     typingTimer.current = setTimeout(async () => {
       try {
@@ -152,12 +113,7 @@ export function EditorToolbox({
         );
         if (!res.ok) throw new Error("Failed to check");
         const json = await res.json();
-
-        if (json.available) {
-          setSlugStatus("available");
-        } else {
-          setSlugStatus("taken");
-        }
+        setSlugStatus(json.available ? "available" : "taken");
       } catch (err) {
         console.error("Failed to check slug availability", err);
         setSlugStatus("idle");
@@ -180,7 +136,6 @@ export function EditorToolbox({
       }
       toast.success("Event Page URL updated!");
       setSlugStatus("idle");
-      // Optional: trigger onFlush to keep UI synced, but since eventId is standard, it's fine.
     } catch (err) {
       console.error(err);
       toast.error(
@@ -202,22 +157,18 @@ export function EditorToolbox({
   };
 
   const confirmStatusAction = () => {
-    if (pendingStatusAction === "publish" && onPublish) {
-      onPublish();
-    } else if (pendingStatusAction === "unpublish" && onUnpublish) {
-      onUnpublish();
-    }
+    if (pendingStatusAction === "publish") handlePublish();
+    else handleUnpublish();
     setStatusAlertOpen(false);
   };
 
   const confirmTicketingAction = () => {
-    if (pendingTicketingAction === "enable" && onEnableTicketing) {
-      onEnableTicketing();
-    } else if (pendingTicketingAction === "disable" && onDisableTicketing) {
-      onDisableTicketing();
-    }
+    if (pendingTicketingAction === "enable") enableTicketing();
+    else disableTicketing();
     setTicketingAlertOpen(false);
   };
+
+  const collaboratorCount = collaborators.size;
 
   return (
     <>
@@ -240,7 +191,7 @@ export function EditorToolbox({
             variant="ghost"
             size="sm"
             className="gap-2 shrink-0"
-            onClick={onBack}
+            onClick={handleBack}
           >
             <ArrowLeft className="h-4 w-4" />
             <span className="hidden sm:inline">Back</span>
@@ -254,9 +205,7 @@ export function EditorToolbox({
                   Saving…
                 </>
               ) : (
-                lastSavedAt &&
-                LastSavedLabelComponent &&
-                LastSavedLabelComponent
+                lastSavedAt && <LastSavedLabel date={lastSavedAt} />
               )}
             </span>
 
@@ -337,7 +286,7 @@ export function EditorToolbox({
                 className="h-7 text-xs px-3"
                 onClick={async () => {
                   if (pathname?.includes("/checkout")) {
-                    if (onFlush) await onFlush();
+                    await flush();
                     router.push(`/events/${eventId}/edit`);
                   }
                 }}
@@ -355,7 +304,7 @@ export function EditorToolbox({
                 )}
                 onClick={async () => {
                   if (!pathname?.includes("/checkout")) {
-                    if (onFlush) await onFlush();
+                    await flush();
                     router.push(`/events/${eventId}/checkout/edit`);
                   }
                 }}
@@ -375,82 +324,80 @@ export function EditorToolbox({
         onOpenChange={setSettingsOpen}
       >
         <div className="space-y-6 py-4">
-          {setThemeOpen && (
-            <>
-              <div className="space-y-4">
-                <h4 className="text-sm font-medium leading-none">Customise</h4>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Theme</Label>
-                    <p className="text-[13px] text-muted-foreground">
-                      Adjust colours and layout
-                    </p>
+          <>
+            <div className="space-y-4">
+              <h4 className="text-sm font-medium leading-none">Customise</h4>
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Theme</Label>
+                  <p className="text-[13px] text-muted-foreground">
+                    Adjust colours and layout
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setSettingsOpen(false);
+                    setThemeOpen(true);
+                  }}
+                >
+                  <Palette className="h-4 w-4 mr-2" /> Theme
+                </Button>
+              </div>
+
+              <div className="space-y-2 mt-4">
+                <Label htmlFor="url-slug">Event Page URL</Label>
+                <p className="text-[13px] text-muted-foreground">
+                  Customise the link to your event page.
+                </p>
+                <div className="flex w-full space-x-2 items-center">
+                  <div className="flex items-center rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors w-full">
+                    <span className="text-muted-foreground mr-1">
+                      tix.connect3.app/event/
+                    </span>
+                    <input
+                      id="url-slug"
+                      type="text"
+                      placeholder={eventId || "my-awesome-event"}
+                      value={urlSlug}
+                      onChange={handleSlugChange}
+                      className="flex-1 bg-transparent py-1 shadow-none outline-none focus:outline-none focus:ring-0 min-w-12.5"
+                    />
+                    <div className="w-4 h-4 ml-2 shrink-0 flex items-center justify-center">
+                      {slugStatus === "checking" && (
+                        <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                      )}
+                      {slugStatus === "available" && (
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                      )}
+                      {slugStatus === "taken" && (
+                        <XCircle className="h-4 w-4 text-red-500" />
+                      )}
+                    </div>
                   </div>
                   <Button
-                    variant="outline"
                     size="sm"
-                    onClick={() => {
-                      setSettingsOpen(false);
-                      setThemeOpen(true);
-                    }}
+                    variant="secondary"
+                    onClick={handleSaveSlug}
+                    disabled={
+                      savingSlug ||
+                      slugStatus === "taken" ||
+                      slugStatus === "idle" ||
+                      slugStatus === "checking"
+                    }
                   >
-                    <Palette className="h-4 w-4 mr-2" /> Theme
+                    {savingSlug ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      "Save"
+                    )}
                   </Button>
                 </div>
-
-                <div className="space-y-2 mt-4">
-                  <Label htmlFor="url-slug">Event Page URL</Label>
-                  <p className="text-[13px] text-muted-foreground">
-                    Customise the link to your event page.
-                  </p>
-                  <div className="flex w-full space-x-2 items-center">
-                    <div className="flex items-center rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors w-full">
-                      <span className="text-muted-foreground mr-1">
-                        tix.connect3.app/event/
-                      </span>
-                      <input
-                        id="url-slug"
-                        type="text"
-                        placeholder={eventId || "my-awesome-event"}
-                        value={urlSlug}
-                        onChange={handleSlugChange}
-                        className="flex-1 bg-transparent py-1 shadow-none outline-none focus:outline-none focus:ring-0 min-w-12.5"
-                      />
-                      <div className="w-4 h-4 ml-2 shrink-0 flex items-center justify-center">
-                        {slugStatus === "checking" && (
-                          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-                        )}
-                        {slugStatus === "available" && (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
-                        )}
-                        {slugStatus === "taken" && (
-                          <XCircle className="h-4 w-4 text-red-500" />
-                        )}
-                      </div>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={handleSaveSlug}
-                      disabled={
-                        savingSlug ||
-                        slugStatus === "taken" ||
-                        slugStatus === "idle" ||
-                        slugStatus === "checking"
-                      }
-                    >
-                      {savingSlug ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        "Save"
-                      )}
-                    </Button>
-                  </div>
-                </div>
               </div>
-              <Separator />
-            </>
-          )}
+            </div>
+            <Separator />
+          </>
 
           <div className="space-y-4">
             <h4 className="text-sm font-medium leading-none text-red-500">

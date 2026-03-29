@@ -221,78 +221,7 @@ export function PricingModal({
       className="sm:max-w-2xl"
     >
       <div className="flex flex-col gap-4">
-        {/* Event-level capacity */}
         <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-3 rounded-lg border bg-muted/30 px-3 py-2">
-            <div className="flex min-w-0 flex-1 items-center gap-1.5">
-              <Label className="shrink-0 text-xs font-medium text-muted-foreground">
-                Event Capacity
-              </Label>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-3.5 w-3.5 shrink-0 cursor-help text-muted-foreground" />
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="max-w-52">
-                    Total tickets available across all tiers. Leave empty for
-                    unlimited.
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            <Input
-              type="number"
-              min={1}
-              value={eventCapacity ?? ""}
-              onChange={(e) => {
-                const val = e.target.value
-                  ? parseInt(e.target.value, 10)
-                  : null;
-                if (val !== null && !isNaN(val)) {
-                  setEventCapacity(val);
-                } else if (e.target.value === "") {
-                  setEventCapacity(null);
-                }
-
-                // Clear any capacity errors while typing
-                setErrors((prev) => {
-                  if (!prev.capacity) return prev;
-                  const next = { ...prev };
-                  delete next.capacity;
-                  return next;
-                });
-              }}
-              onBlur={() => {
-                if (eventCapacity !== null) {
-                  const sumQuantities = tiers.reduce(
-                    (sum, t) => sum + (t.quantity ?? 0),
-                    0,
-                  );
-                  if (eventCapacity < sumQuantities) {
-                    setEventCapacity(sumQuantities);
-                    setErrors((prev) => ({
-                      ...prev,
-                      capacity: `Capacity cannot be lower than the sum of ticket quantities (${sumQuantities})`,
-                    }));
-
-                    // Clear the error message smoothly after 3 seconds
-                    setTimeout(() => {
-                      setErrors((prev) => {
-                        const next = { ...prev };
-                        delete next.capacity;
-                        return next;
-                      });
-                    }, 3000);
-                  } else {
-                    // Just enforce min bounds
-                    setEventCapacity(Math.max(1, eventCapacity));
-                  }
-                }
-              }}
-              placeholder="Unlimited"
-              className="h-8 w-32 text-sm"
-            />
-          </div>
           {errors.capacity && (
             <p className="text-xs text-red-500 px-1">{errors.capacity}</p>
           )}
@@ -333,6 +262,76 @@ export function PricingModal({
             </div>
           </div>
         )}
+
+        {/* Event-level capacity */}
+        <div className="flex items-center gap-3 rounded-lg border bg-muted/30 px-3 py-2">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            <Label className="shrink-0 text-xs font-medium text-muted-foreground">
+              Event Capacity
+            </Label>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="h-3.5 w-3.5 shrink-0 cursor-help text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-52">
+                  Total tickets available across all tiers. Leave empty for
+                  unlimited.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+          <Input
+            type="number"
+            min={1}
+            value={eventCapacity ?? ""}
+            onChange={(e) => {
+              const val = e.target.value ? parseInt(e.target.value, 10) : null;
+              if (val !== null && !isNaN(val)) {
+                setEventCapacity(val);
+              } else if (e.target.value === "") {
+                setEventCapacity(null);
+              }
+
+              // Clear any capacity errors while typing
+              setErrors((prev) => {
+                if (!prev.capacity) return prev;
+                const next = { ...prev };
+                delete next.capacity;
+                return next;
+              });
+            }}
+            onBlur={() => {
+              if (eventCapacity !== null) {
+                const sumQuantities = tiers.reduce(
+                  (sum, t) => sum + (t.quantity ?? 0),
+                  0,
+                );
+                if (eventCapacity < sumQuantities) {
+                  setEventCapacity(sumQuantities);
+                  setErrors((prev) => ({
+                    ...prev,
+                    capacity: `Capacity cannot be lower than the sum of ticket quantities (${sumQuantities})`,
+                  }));
+
+                  // Clear the error message smoothly after 3 seconds
+                  setTimeout(() => {
+                    setErrors((prev) => {
+                      const next = { ...prev };
+                      delete next.capacity;
+                      return next;
+                    });
+                  }, 3000);
+                } else {
+                  // Just enforce min bounds
+                  setEventCapacity(Math.max(1, eventCapacity));
+                }
+              }
+            }}
+            placeholder="Unlimited"
+            className="h-8 w-32 text-sm"
+          />
+        </div>
 
         {/* Table */}
         <div className="overflow-hidden rounded-md border">

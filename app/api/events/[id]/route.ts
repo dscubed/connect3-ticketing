@@ -118,7 +118,7 @@ export async function GET(
         theme,
         sections: sections.data ?? [],
         occurrences: occurrences.data ?? [],
-        ticketing: { enabled: event.ticketing_enabled ?? true },
+        ticketing: { enabled: event.ticketing_enabled ?? false },
       },
     });
   } catch (error) {

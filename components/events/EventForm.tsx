@@ -22,6 +22,10 @@ import {
   getThemeColors,
   getAccentGradient,
 } from "./shared/types";
+import {
+  EventEditorContext,
+  type EventEditorContextValue,
+} from "./shared/EventEditorContext";
 
 /* ── Unified field components ── */
 import {
@@ -174,36 +178,6 @@ function CollaboratorBadge({
   );
 }
 
-/* ── Relative "last saved" label that ticks every ~30s ── */
-function formatRelativeTime(date: Date): string {
-  const seconds = Math.round((Date.now() - date.getTime()) / 1000);
-  if (seconds < 10) return "Saved just now";
-  if (seconds < 60) return "Saved seconds ago";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes === 1) return "Saved 1 min ago";
-  if (minutes < 60) return `Saved ${minutes} mins ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours === 1) return "Saved 1 hr ago";
-  if (hours < 24) return `Saved ${hours} hrs ago`;
-  const days = Math.floor(hours / 24);
-  if (days === 1) return "Saved 1 day ago";
-  if (days < 7) return `Saved ${days} days ago`;
-  return "Saved a while ago";
-}
-
-function LastSavedLabel({ date }: { date: Date }) {
-  const [tick, setTick] = useState(0);
-
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 30_000);
-    return () => clearInterval(id);
-  }, [date]);
-
-  // tick is used to force re-evaluation of the label
-  void tick;
-  return <>{formatRelativeTime(date)}</>;
-}
-
 export default function EventForm({
   initialData,
   existingImages,
@@ -219,6 +193,8 @@ export default function EventForm({
 }: EventFormProps) {
   const router = useRouter();
   const profile = useAuthStore((s) => s.profile);
+
+  /* ── Core state ── */
   const [saving, setSaving] = useState(false);
   const [draftSaved, setDraftSaved] = useState(mode === "edit");
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(
@@ -230,16 +206,24 @@ export default function EventForm({
   const [ticketingEnabled, setTicketingEnabled] = useState(
     initialTicketingEnabled,
   );
+  const [ticketingChanging, setTicketingChanging] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
+  const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
+
+  /* ── Modal state ── */
   const [pricingModalOpen, setPricingModalOpen] = useState(false);
   const [dateLocationModalOpen, setDateLocationModalOpen] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
-  const [previewMode, setPreviewMode] = useState(false);
+  const [managerOpen, setManagerOpen] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
 
-  const [ticketingChanging, setTicketingChanging] = useState(false);
-
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const focusedFieldRef = useRef<FieldGroup | null>(null);
 
-  /** Map form field keys → FieldGroup for auto-save. */
+  const viewMode = previewMode ? "preview" : "edit";
+  const isEditing = !previewMode;
+
+  /* ── Field → FieldGroup map ── */
   const FIELD_TO_GROUP: Record<keyof EventFormData, FieldGroup> = useMemo(
     () => ({
       name: "event",
@@ -268,11 +252,6 @@ export default function EventForm({
     [],
   );
 
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
-
-  const viewMode = previewMode ? "preview" : "edit";
-  const isEditing = !previewMode;
-
   /* ── Checklist scroll-to refs ── */
   const thumbnailRef = useRef<HTMLDivElement>(null);
   const startDateRef = useRef<HTMLDivElement>(null);
@@ -284,7 +263,7 @@ export default function EventForm({
     () => ({
       thumbnail: thumbnailRef,
       "start-date": startDateRef,
-      location: startDateRef, // Date + location now share one section
+      location: startDateRef,
       category: categoryRef,
       tags: tagsRef,
       faqs: faqsRef,
@@ -292,6 +271,7 @@ export default function EventForm({
     [],
   );
 
+  /* ── Form data ── */
   const [form, setForm] = useState<EventFormData>({
     name: initialData?.name ?? "",
     description: initialData?.description ?? "",
@@ -327,17 +307,14 @@ export default function EventForm({
     theme: initialData?.theme ?? { ...DEFAULT_THEME },
   } as EventFormData);
 
-  // Cache the full profile objects for additional hosts
   const [hostsData, setHostsData] = useState<ClubProfile[]>(
     initialHostsData ?? [],
   );
-
-  // Dynamic section cards
   const [sections, setSections] = useState<SectionData[]>(
     initialSections ?? [],
   );
 
-  /* ── Carousel images (lifted state — persists across preview/edit toggle) ── */
+  /* ── Images ── */
   const [carouselImages, setCarouselImages] = useState<CarouselImage[]>(
     () =>
       initialCarouselImages ??
@@ -346,14 +323,12 @@ export default function EventForm({
         url,
       })),
   );
-  const [managerOpen, setManagerOpen] = useState(false);
-  const [themeOpen, setThemeOpen] = useState(false);
-  const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
+
+  /* ── Theme ── */
   const [theme, setTheme] = useState<EventTheme>(
     initialData?.theme ?? { ...DEFAULT_THEME },
   );
 
-  /* Sync form.imageUrls whenever carouselImages changes */
   useEffect(() => {
     const urls = carouselImages
       .filter((i) => i.url && !i.uploading)
@@ -361,42 +336,29 @@ export default function EventForm({
     setForm((prev) => ({ ...prev, imageUrls: urls }));
   }, [carouselImages]);
 
-  /* Sync form.theme whenever theme changes */
   useEffect(() => {
     setForm((prev) => ({ ...prev, theme }));
   }, [theme]);
 
-  /* ── Derived theme values ── */
   const colors = useMemo(() => getThemeColors(theme.mode), [theme.mode]);
   const isDark = colors.isDark;
   useDocumentDark(isDark);
 
   const pageBgClass = colors.pageBg;
   const pageTextClass = colors.text;
-
-  /** Accent gradient for the content background */
   const accentGradient = useMemo(
     () => getAccentGradient(theme.accent, isDark, theme.accentCustom),
     [theme.accent, theme.accentCustom, isDark],
   );
-
-  /** Cards should use darker surfaces when the page is in dark mode */
   const cardDark = isDark;
 
-  /* ── Auto-save (field-group-aware, debounced) ── */
+  /* ── Auto-save ── */
   const broadcastRef = useRef<(groups: FieldGroup[]) => void>(() => {});
-
-  /**
-   * Always-current refs so performAutoSave never captures stale closure values.
-   * This is critical when flush() is called synchronously after setForm() —
-   * React hasn't re-rendered yet so the state variable `form` would be stale.
-   */
   const formRef = useRef<EventFormData>(form);
   const carouselImagesRef = useRef<CarouselImage[]>(carouselImages);
   const sectionsRef = useRef<SectionData[]>(sections);
   const draftSavedRef = useRef<boolean>(draftSaved);
 
-  // Keep refs in sync on every render
   formRef.current = form;
   carouselImagesRef.current = carouselImages;
   sectionsRef.current = sections;
@@ -404,8 +366,6 @@ export default function EventForm({
 
   const performAutoSave = useCallback(
     async (dirtyGroups: FieldGroup[]) => {
-      // Read from refs so we always get the latest values, even when called
-      // synchronously (e.g. flush() right after setForm()).
       const latestForm = formRef.current;
       const latestImages = carouselImagesRef.current;
       const latestSections = sectionsRef.current;
@@ -434,7 +394,7 @@ export default function EventForm({
         setLastSavedAt(new Date());
       } catch (err) {
         console.error("Auto-save failed:", err);
-        throw err; // re-throw so useFieldAutoSave re-queues the groups
+        throw err;
       }
     },
     [eventId],
@@ -444,6 +404,7 @@ export default function EventForm({
     markDirty,
     flush,
     isSaving: isAutoSaving,
+    hasPendingChanges,
   } = useFieldAutoSave({
     enabled: !!eventId,
     onSave: performAutoSave,
@@ -458,69 +419,61 @@ export default function EventForm({
     [markDirty],
   );
 
-  /* ── Attention badge helpers ── */
-  const needsStartDate = !form.startDate;
-  const needsLocation = form.locationType === "tba";
-  const needsCategory = !form.category;
-  const needsTags = form.tags.length < 2;
+  /* ── Sections ── */
+  const addSection = useCallback(
+    (type: SectionType) => {
+      setSections((prev) => [...prev, createBlankSection(type)]);
+      markDirty(`section:${type}`);
+    },
+    [markDirty],
+  );
 
-  /* FAQ badge: show on AddSection if no FAQ exists, on Add Question if FAQ incomplete */
-  const faqSection = sections.find((s) => s.type === "faq") as
-    | FAQSectionData
-    | undefined;
-  const faqComplete =
-    !!faqSection &&
-    faqSection.items.filter((q) => q.question.trim() && q.answer.trim())
-      .length >= 2;
-  const needsFaqBadge = !faqComplete;
-  const faqBadgeOnAddSection = needsFaqBadge && !faqSection;
+  const updateSection = useCallback(
+    (index: number, data: SectionData) => {
+      setSections((prev) => prev.map((s, i) => (i === index ? data : s)));
+      markDirty(`section:${data.type}`);
+    },
+    [markDirty],
+  );
 
-  const addSection = (type: SectionType) => {
-    setSections((prev) => [...prev, createBlankSection(type)]);
-    markDirty(`section:${type}`);
-  };
+  const removeSection = useCallback(
+    (index: number) => {
+      setSections((prev) => {
+        const removedType = prev[index].type;
+        markDirty(`section:${removedType}`);
+        return prev.filter((_, i) => i !== index);
+      });
+    },
+    [markDirty],
+  );
 
-  const updateSection = (index: number, data: SectionData) => {
-    setSections((prev) => prev.map((s, i) => (i === index ? data : s)));
-    markDirty(`section:${data.type}`);
-  };
-
-  const removeSection = (index: number) => {
-    const removedType = sections[index].type;
-    setSections((prev) => prev.filter((_, i) => i !== index));
-    markDirty(`section:${removedType}`);
-  };
-
-  // In edit mode, use the actual event creator's profile from the DB.
-  // In create mode, fall back to the logged-in user's profile.
+  /* ── Creator profile ── */
   const creatorProfile: ClubProfile = initialCreatorProfile ?? {
     id: profile?.id ?? "",
     first_name: profile?.first_name ?? "You",
     avatar_url: profile?.avatar_url ?? null,
   };
 
+  /* ── Form helpers ── */
   const updateField = <K extends keyof EventFormData>(
     key: K,
     value: EventFormData[K],
   ) => {
-    // Update the ref synchronously so any immediate flush() sees the new value
     formRef.current = { ...formRef.current, [key]: value };
     setForm((prev) => ({ ...prev, [key]: value }));
     markDirty(FIELD_TO_GROUP[key]);
   };
 
-  /* ── Realtime: selectively merge remote changes ── */
+  /* ── Realtime collaboration ── */
   const handleRemoteChange = useCallback(
     async (groups: FieldGroup[]) => {
       if (!eventId || groups.length === 0) return;
       try {
         const result = await fetchEvent(eventId);
         const focused = focusedFieldRef.current;
-        const applied: FieldGroup[] = [];
 
         for (const g of groups) {
-          if (g === focused) continue; // dirty-field protection
-          applied.push(g);
+          if (g === focused) continue;
 
           switch (g) {
             case "event":
@@ -593,7 +546,6 @@ export default function EventForm({
           }
         }
 
-        // Merge remote section changes (skip sections the local user is focused on)
         const remoteSectionGroups = groups.filter(
           (g) => g.startsWith("section:") && g !== focused,
         );
@@ -610,8 +562,6 @@ export default function EventForm({
             );
           });
         }
-
-        // Silently applied remote changes — no toast
       } catch (err) {
         console.error("Failed to sync remote changes:", err);
       }
@@ -627,30 +577,27 @@ export default function EventForm({
     onRemoteChange: handleRemoteChange,
   });
 
-  // Keep broadcastRef in sync with the latest broadcast function
   useEffect(() => {
     broadcastRef.current = broadcast;
   }, [broadcast]);
 
-  /* ── beforeunload: warn if dirty ── */
+  /* ── beforeunload: only warn when there are unsaved changes ── */
   useEffect(() => {
+    if (!hasPendingChanges && !isAutoSaving) return;
     const handler = (e: BeforeUnloadEvent) => {
-      // flush is async so we can only warn — the browser doesn't support
-      // async work in beforeunload reliably.
-      // We rely on the auto-save having already flushed most changes.
       e.preventDefault();
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, []);
+  }, [hasPendingChanges, isAutoSaving]);
 
-  /* ── Navigate back with flush ── */
+  /* ── Navigation ── */
   const handleBack = useCallback(async () => {
     await flush();
     router.back();
   }, [flush, router]);
 
-  /* ── Publish ── */
+  /* ── Publish / Unpublish ── */
   const handlePublish = async () => {
     if (!form.category) {
       toast.error("Please select a category before publishing.");
@@ -703,7 +650,6 @@ export default function EventForm({
     }
   };
 
-  /* ── Unpublish (revert to draft) ── */
   const handleUnpublish = async () => {
     setSaving(true);
     try {
@@ -730,16 +676,13 @@ export default function EventForm({
     }
   };
 
-  /* ── Enable / Disable Ticketing Toggle ── */
-  const executeEnableTicketing = async () => {
+  /* ── Ticketing ── */
+  const enableTicketing = async () => {
     if (!eventId) return;
-
-    const hasTiers = (form.pricing ?? []).length > 0;
-    if (!hasTiers) {
+    if ((form.pricing ?? []).length === 0) {
       toast.error("Add at least one ticket tier before enabling ticketing.");
       return;
     }
-
     setTicketingChanging(true);
     try {
       const res = await fetch(`/api/events/${eventId}/ticketing`, {
@@ -749,15 +692,14 @@ export default function EventForm({
       setTicketingEnabled(true);
       toast.success("Ticketing enabled!");
     } catch {
-      toast.error(`Failed to enable ticketing.`);
+      toast.error("Failed to enable ticketing.");
     } finally {
       setTicketingChanging(false);
     }
   };
 
-  const executeDisableTicketing = async () => {
+  const disableTicketing = async () => {
     if (!eventId) return;
-
     setTicketingChanging(true);
     try {
       const res = await fetch(`/api/events/${eventId}/ticketing`, {
@@ -769,13 +711,13 @@ export default function EventForm({
       setTicketingEnabled(false);
       toast.success("Ticketing disabled.");
     } catch {
-      toast.error(`Failed to disable ticketing.`);
+      toast.error("Failed to disable ticketing.");
     } finally {
       setTicketingChanging(false);
     }
   };
 
-  /* ── Section-level DnD ── */
+  /* ── Section DnD ── */
   const sectionSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, {
@@ -794,7 +736,7 @@ export default function EventForm({
     markDirty(...sections.map((s) => `section:${s.type}` as FieldGroup));
   };
 
-  /* ── Field focus broadcasting ── */
+  /* ── Collaboration helpers ── */
   const handleFieldFocus = useCallback(
     (field: FieldGroup) => {
       focusedFieldRef.current = field;
@@ -805,7 +747,6 @@ export default function EventForm({
 
   const handleFieldBlur = useCallback(
     (e: React.FocusEvent<HTMLDivElement>) => {
-      // Only clear focus if moving outside the field group wrapper
       if (!e.currentTarget.contains(e.relatedTarget as Node)) {
         focusedFieldRef.current = null;
         broadcastFocus(null);
@@ -814,7 +755,6 @@ export default function EventForm({
     [broadcastFocus],
   );
 
-  /** Check if a field group is locked by another collaborator. */
   const getFieldLock = useCallback(
     (group: FieldGroup): { locked: boolean; lockedBy?: string } => {
       for (const [, collab] of collaborators) {
@@ -827,7 +767,88 @@ export default function EventForm({
     [collaborators],
   );
 
-  /* ── Render a single section (edit or preview) ── */
+  /* ── Attention badges ── */
+  const needsStartDate = !form.startDate;
+  const needsLocation = form.locationType === "tba";
+  const needsCategory = !form.category;
+  const needsTags = form.tags.length < 2;
+
+  const faqSection = sections.find((s) => s.type === "faq") as
+    | FAQSectionData
+    | undefined;
+  const faqComplete =
+    !!faqSection &&
+    faqSection.items.filter((q) => q.question.trim() && q.answer.trim())
+      .length >= 2;
+  const needsFaqBadge = !faqComplete;
+  const faqBadgeOnAddSection = needsFaqBadge && !faqSection;
+
+  /* ── Context value ── */
+  const editorContext: EventEditorContextValue = useMemo(
+    () => ({
+      eventId,
+      mode: eventId ? "edit" : "create",
+      initialUrlSlug,
+      previewMode,
+      setPreviewMode,
+      viewMode,
+      isEditing,
+      toolbarCollapsed,
+      setToolbarCollapsed,
+      markDirty,
+      flush,
+      isAutoSaving,
+      lastSavedAt,
+      eventStatus,
+      savingPublish: saving,
+      draftSaved,
+      ticketingEnabled,
+      ticketingChanging,
+      handleBack,
+      handlePublish,
+      handleUnpublish,
+      enableTicketing,
+      disableTicketing,
+      theme,
+      setTheme,
+      setThemeOpen,
+      colors,
+      isDark,
+      hasName: !!form.name,
+      collaborators,
+      getFieldLock,
+      handleFieldFocus,
+      handleFieldBlur,
+    }),
+    [
+      eventId,
+      initialUrlSlug,
+      previewMode,
+      viewMode,
+      isEditing,
+      toolbarCollapsed,
+      markDirty,
+      flush,
+      isAutoSaving,
+      lastSavedAt,
+      eventStatus,
+      saving,
+      draftSaved,
+      ticketingEnabled,
+      ticketingChanging,
+      handleBack,
+      theme,
+      colors,
+      isDark,
+      form.name,
+      collaborators,
+      getFieldLock,
+      handleFieldFocus,
+      handleFieldBlur,
+    ],
+  );
+
+  /* ── Section renderer ── */
   const renderSectionContent = (
     section: SectionData,
     index: number,
@@ -869,483 +890,475 @@ export default function EventForm({
     );
   };
 
-  /* Solid bg color — only honoured in card layout */
   const solidBg =
     theme.layout === "card" && theme.bgColor ? theme.bgColor : undefined;
 
+  /* ── Render ── */
   return (
-    <div
-      className={cn("min-h-screen pb-12", pageBgClass, colors.isDark && "dark")}
-      style={solidBg ? { backgroundColor: solidBg } : undefined}
-    >
-      <EditorToolbox
-          eventId={eventId}
-                    initialUrlSlug={initialUrlSlug}
-        mode={eventId ? "edit" : "create"}
-        isDark={isDark}
-        toolbarCollapsed={toolbarCollapsed}
-        setToolbarCollapsed={setToolbarCollapsed}
-        onBack={handleBack}
-        onFlush={flush}
-        isAutoSaving={isAutoSaving}
-        lastSavedAt={lastSavedAt}
-        LastSavedLabelComponent={
-          lastSavedAt ? <LastSavedLabel date={lastSavedAt} /> : null
-        }
-        collaboratorCount={collaborators.size}
-        setThemeOpen={setThemeOpen}
-        previewMode={previewMode}
-        setPreviewMode={setPreviewMode}
-        eventStatus={eventStatus}
-        hasName={!!form.name}
-        savingPublish={saving}
-        onPublish={handlePublish}
-        onUnpublish={handleUnpublish}
-        ticketingEnabled={ticketingEnabled}
-        ticketingChanging={ticketingChanging}
-        onEnableTicketing={executeEnableTicketing}
-        onDisableTicketing={executeDisableTicketing}
-      />
+    <EventEditorContext.Provider value={editorContext}>
+      <div
+        className={cn(
+          "min-h-screen pb-12",
+          pageBgClass,
+          colors.isDark && "dark",
+        )}
+        style={solidBg ? { backgroundColor: solidBg } : undefined}
+      >
+        <EditorToolbox />
 
-      {/* ── Full-width accent gradient overlay ── */}
-      <div style={accentGradient ? { background: accentGradient } : undefined}>
-        {/* ── Single unified layout ── */}
+        {/* Full-width accent gradient overlay */}
         <div
-          className={cn(
-            "mx-auto max-w-4xl px-3 pb-6 pt-12 sm:px-6 sm:pb-8",
-            pageTextClass,
-          )}
+          style={accentGradient ? { background: accentGradient } : undefined}
         >
-          {/* Hero Section */}
-          <div className="space-y-6">
-            <div
-              ref={thumbnailRef}
-              className="relative w-full"
-              onFocus={() => handleFieldFocus("images")}
-              onBlur={handleFieldBlur}
-            >
-              <CollaboratorBadge group="images" collaborators={collaborators} />
-              <EventImageField
-                mode={viewMode}
-                images={carouselImages}
-                existingImages={existingImages}
-                onEditClick={() => setManagerOpen(true)}
-              />
-            </div>
-
-            <SectionWrapper title="" layout={theme.layout} isDark={cardDark}>
-              <div className="space-y-6">
-                <div
-                  onFocus={() => handleFieldFocus("event")}
-                  onBlur={handleFieldBlur}
-                >
-                  <CollaboratorBadge
-                    group="event"
-                    collaborators={collaborators}
-                  />
-                  <EventNameField
-                    mode={viewMode}
-                    value={form.name}
-                    onChange={(v) => updateField("name", v)}
-                    className={pageTextClass}
-                  />
-                </div>
-
-                <div
-                  className={cn(
-                    "flex flex-wrap items-center",
-                    isEditing ? "gap-6" : "gap-2",
-                  )}
-                >
-                  <div ref={categoryRef} className="relative">
-                    {isEditing && <AttentionBadge show={needsCategory} />}
-                    <EventCategoryField
-                      mode={viewMode}
-                      value={form.category}
-                      onChange={(cat) => updateField("category", cat)}
-                    />
-                  </div>
-                  <Separator
-                    className={isEditing ? "h-6!" : "h-5!"}
-                    orientation="vertical"
-                  />
-                  <div ref={tagsRef} className="relative">
-                    {isEditing && <AttentionBadge show={needsTags} />}
-                    <EventTagsField
-                      mode={viewMode}
-                      value={form.tags}
-                      onChange={(tags) => updateField("tags", tags)}
-                    />
-                  </div>
-                </div>
-
-                {/* Meta rows */}
-                <div className="space-y-3">
-                  <div
-                    ref={startDateRef}
-                    className="relative"
-                    onFocus={() => handleFieldFocus("location")}
-                    onBlur={handleFieldBlur}
-                  >
-                    {isEditing && (
-                      <AttentionBadge
-                        show={needsStartDate || needsLocation}
-                      />
-                    )}
-                    <CollaboratorBadge
-                      group="location"
-                      collaborators={collaborators}
-                    />
-                    <div className="space-y-3">
-                      {isEditing ? (
-                        <>
-                          {/* Edit mode: preview-style display, click to open modal editor */}
-                          <button
-                            type="button"
-                            onClick={() => setDateLocationModalOpen(true)}
-                            className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 -mx-2 text-left transition-colors hover:bg-muted/50"
-                          >
-                            <EventDateField
-                              mode="preview"
-                              value={{
-                                startDate: form.startDate,
-                                startTime: form.startTime,
-                                endDate: form.endDate,
-                                endTime: form.endTime,
-                                timezone: form.timezone,
-                                extraOccurrences:
-                                  form.occurrences.length > 1
-                                    ? form.occurrences.length - 1
-                                    : undefined,
-                              }}
-                            />
-                            <Pencil className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDateLocationModalOpen(true)}
-                            className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 -mx-2 text-left transition-colors hover:bg-muted/50"
-                          >
-                            <EventLocationField
-                              mode="preview"
-                              value={form.location}
-                              extraVenues={
-                                form.venues.filter((v) => v.type !== "tba").length > 1
-                                  ? form.venues.filter((v) => v.type !== "tba").length - 1
-                                  : undefined
-                              }
-                            />
-                            <Pencil className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-                          </button>
-                          <ResponsiveModal
-                            open={dateLocationModalOpen}
-                            onOpenChange={setDateLocationModalOpen}
-                            title="Date & location"
-                            className="max-w-lg"
-                          >
-                            <div className="overflow-y-auto max-h-[70vh] pr-1">
-                              <DateLocationSection
-                                timezone={form.timezone}
-                                occurrences={form.occurrences}
-                                locationType={form.locationType}
-                                location={form.location}
-                                onlineLink={form.onlineLink}
-                                venues={form.venues}
-                                onTimezoneChange={(tz) => {
-                                  setForm((prev) => ({ ...prev, timezone: tz }));
-                                  markDirty("event", "location");
-                                }}
-                                onLocationChange={(partial) => {
-                                  setForm((prev) => ({
-                                    ...prev,
-                                    ...partial,
-                                    isOnline:
-                                      (partial.locationType ?? form.locationType) ===
-                                      "online",
-                                  }));
-                                  markDirty("event", "location");
-                                }}
-                                onVenuesChange={(venues) => {
-                                  setForm((prev) => ({ ...prev, venues }));
-                                  markDirty("event", "location");
-                                }}
-                                onOccurrencesChange={(occs) => {
-                                  // Auto-derive backward-compat fields from occurrences
-                                  const sorted = [...occs].sort(
-                                    (a, b) =>
-                                      a.startDate.localeCompare(b.startDate) ||
-                                      a.startTime.localeCompare(b.startTime),
-                                  );
-                                  const first = sorted[0];
-                                  setForm((prev) => ({
-                                    ...prev,
-                                    occurrences: occs,
-                                    isRecurring: occs.length > 1,
-                                    startDate: first?.startDate ?? "",
-                                    startTime: first?.startTime ?? "",
-                                    endDate: first?.endDate ?? "",
-                                    endTime: first?.endTime ?? "",
-                                  }));
-                                  markDirty("event", "occurrences", "location");
-                                }}
-                              />
-                            </div>
-                          </ResponsiveModal>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => setDetailModalOpen(true)}
-                            className="flex w-full items-center text-left rounded-md px-2 py-1.5 -mx-2 transition-colors hover:bg-muted/50 cursor-pointer"
-                          >
-                            <EventDateField
-                              mode="preview"
-                              value={{
-                                startDate: form.startDate,
-                                startTime: form.startTime,
-                                endDate: form.endDate,
-                                endTime: form.endTime,
-                                timezone: form.timezone,
-                                extraOccurrences:
-                                  form.occurrences.length > 1
-                                    ? form.occurrences.length - 1
-                                    : undefined,
-                              }}
-                            />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDetailModalOpen(true)}
-                            className="flex w-full items-center text-left rounded-md px-2 py-1.5 -mx-2 transition-colors hover:bg-muted/50 cursor-pointer"
-                          >
-                            <EventLocationField
-                              mode="preview"
-                              value={form.location}
-                              extraVenues={
-                                form.venues.filter((v) => v.type !== "tba").length > 1
-                                  ? form.venues.filter((v) => v.type !== "tba").length - 1
-                                  : undefined
-                              }
-                            />
-                          </button>
-                          <EventDetailModal
-                            open={detailModalOpen}
-                            onOpenChange={setDetailModalOpen}
-                            dateTime={{
-                              startDate: form.startDate,
-                              startTime: form.startTime,
-                              endDate: form.endDate,
-                              endTime: form.endTime,
-                              timezone: form.timezone,
-                            }}
-                            venues={form.venues}
-                            occurrences={form.occurrences}
-                          />
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div
-                    onFocus={() => handleFieldFocus("hosts")}
-                    onBlur={handleFieldBlur}
-                    className="relative"
-                  >
-                    <CollaboratorBadge
-                      group="hosts"
-                      collaborators={collaborators}
-                    />
-                    <EventHostsField
-                      mode={viewMode}
-                      creatorProfile={creatorProfile}
-                      value={{ ids: form.hostIds, data: hostsData }}
-                      onChange={({ ids, data }) => {
-                        updateField("hostIds", ids);
-                        setHostsData(data);
-                      }}
-                      eventId={eventId}
-                      eventSaved={draftSaved}
-                      onInvitesSent={() => {
-                        // Trigger auto-save after invites are sent
-                        markDirty("hosts");
-                      }}
-                    />
-                  </div>
-                  <div
-                    onFocus={() => handleFieldFocus("pricing")}
-                    onBlur={handleFieldBlur}
-                    className="relative"
-                  >
-                    <CollaboratorBadge
-                      group="pricing"
-                      collaborators={collaborators}
-                    />
-                    <EventPricingField
-                      mode={viewMode}
-                      value={form.pricing}
-                      onChange={(tiers) => updateField("pricing", tiers)}
-                      eventCapacity={form.eventCapacity}
-                      onEventCapacityChange={(cap) =>
-                        updateField("eventCapacity", cap)
-                      }
-                      eventStartDate={form.startDate}
-                      eventStartTime={form.startTime}
-                      onAfterSave={() => flush()}
-                      modalOpen={pricingModalOpen}
-                      onModalOpenChange={setPricingModalOpen}
-                      ticketingEnabled={ticketingEnabled}
-                    />
-                  </div>
-                  <div
-                    onFocus={() => handleFieldFocus("links")}
-                    onBlur={handleFieldBlur}
-                    className="relative"
-                  >
-                    <CollaboratorBadge
-                      group="links"
-                      collaborators={collaborators}
-                    />
-                    <EventLinksField
-                      mode={viewMode}
-                      value={form.links}
-                      onChange={(links) => updateField("links", links)}
-                    />
-                  </div>
-                </div>
-              </div>
-            </SectionWrapper>
-          </div>
-
-          {/* Content cards */}
           <div
             className={cn(
-              "mt-10",
-              theme.layout === "classic" ? "space-y-10" : "space-y-6",
+              "mx-auto max-w-4xl px-3 pb-6 pt-12 sm:px-6 sm:pb-8",
+              pageTextClass,
             )}
           >
-            <div className="relative">
-              <CollaboratorBadge group="event" collaborators={collaborators} />
-              <EventDescriptionField
-                mode={viewMode}
-                value={form.description}
-                onChange={(v) => updateField("description", v)}
-                layout={theme.layout}
-                isDark={cardDark}
-                onFocusChange={(focused) => {
-                  if (focused) {
-                    handleFieldFocus("event");
-                    markDirty("event");
-                  } else {
-                    focusedFieldRef.current = null;
-                    broadcastFocus(null);
-                  }
-                }}
-                locked={getFieldLock("event").locked}
-                lockedBy={getFieldLock("event").lockedBy}
-              />
+            {/* Hero */}
+            <div className="space-y-6">
+              <div
+                ref={thumbnailRef}
+                className="relative w-full"
+                onFocus={() => handleFieldFocus("images")}
+                onBlur={handleFieldBlur}
+              >
+                <CollaboratorBadge
+                  group="images"
+                  collaborators={collaborators}
+                />
+                <EventImageField
+                  mode={viewMode}
+                  images={carouselImages}
+                  existingImages={existingImages}
+                  onEditClick={() => setManagerOpen(true)}
+                />
+              </div>
+
+              <SectionWrapper title="" layout={theme.layout} isDark={cardDark}>
+                <div className="space-y-6">
+                  <div
+                    onFocus={() => handleFieldFocus("event")}
+                    onBlur={handleFieldBlur}
+                  >
+                    <CollaboratorBadge
+                      group="event"
+                      collaborators={collaborators}
+                    />
+                    <EventNameField
+                      mode={viewMode}
+                      value={form.name}
+                      onChange={(v) => updateField("name", v)}
+                      className={pageTextClass}
+                    />
+                  </div>
+
+                  <div
+                    className={cn(
+                      "flex flex-wrap items-center",
+                      isEditing ? "gap-6" : "gap-2",
+                    )}
+                  >
+                    <div ref={categoryRef} className="relative">
+                      {isEditing && <AttentionBadge show={needsCategory} />}
+                      <EventCategoryField
+                        mode={viewMode}
+                        value={form.category}
+                        onChange={(cat) => updateField("category", cat)}
+                      />
+                    </div>
+                    <Separator
+                      className={isEditing ? "h-6!" : "h-5!"}
+                      orientation="vertical"
+                    />
+                    <div ref={tagsRef} className="relative">
+                      {isEditing && <AttentionBadge show={needsTags} />}
+                      <EventTagsField
+                        mode={viewMode}
+                        value={form.tags}
+                        onChange={(tags) => updateField("tags", tags)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Date / Location / Hosts / Pricing / Links */}
+                  <div className="space-y-3">
+                    <div
+                      ref={startDateRef}
+                      className="relative"
+                      onFocus={() => handleFieldFocus("location")}
+                      onBlur={handleFieldBlur}
+                    >
+                      {isEditing && (
+                        <AttentionBadge
+                          show={needsStartDate || needsLocation}
+                        />
+                      )}
+                      <CollaboratorBadge
+                        group="location"
+                        collaborators={collaborators}
+                      />
+                      <div className="space-y-3">
+                        {isEditing ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setDateLocationModalOpen(true)}
+                              className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 -mx-2 text-left transition-colors hover:bg-muted/50"
+                            >
+                              <EventDateField
+                                mode="preview"
+                                value={{
+                                  startDate: form.startDate,
+                                  startTime: form.startTime,
+                                  endDate: form.endDate,
+                                  endTime: form.endTime,
+                                  timezone: form.timezone,
+                                  extraOccurrences:
+                                    form.occurrences.length > 1
+                                      ? form.occurrences.length - 1
+                                      : undefined,
+                                }}
+                              />
+                              <Pencil className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDateLocationModalOpen(true)}
+                              className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 -mx-2 text-left transition-colors hover:bg-muted/50"
+                            >
+                              <EventLocationField
+                                mode="preview"
+                                value={form.location}
+                                extraVenues={
+                                  form.venues.filter((v) => v.type !== "tba")
+                                    .length > 1
+                                    ? form.venues.filter(
+                                        (v) => v.type !== "tba",
+                                      ).length - 1
+                                    : undefined
+                                }
+                              />
+                              <Pencil className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                            </button>
+                            <ResponsiveModal
+                              open={dateLocationModalOpen}
+                              onOpenChange={setDateLocationModalOpen}
+                              title="Date & location"
+                              className="max-w-lg"
+                            >
+                              <div className="overflow-y-auto max-h-[70vh] pr-1">
+                                <DateLocationSection
+                                  timezone={form.timezone}
+                                  occurrences={form.occurrences}
+                                  locationType={form.locationType}
+                                  location={form.location}
+                                  onlineLink={form.onlineLink}
+                                  venues={form.venues}
+                                  onTimezoneChange={(tz) => {
+                                    setForm((prev) => ({
+                                      ...prev,
+                                      timezone: tz,
+                                    }));
+                                    markDirty("event", "location");
+                                  }}
+                                  onLocationChange={(partial) => {
+                                    setForm((prev) => ({
+                                      ...prev,
+                                      ...partial,
+                                      isOnline:
+                                        (partial.locationType ??
+                                          form.locationType) === "online",
+                                    }));
+                                    markDirty("event", "location");
+                                  }}
+                                  onVenuesChange={(venues) => {
+                                    setForm((prev) => ({ ...prev, venues }));
+                                    markDirty("event", "location");
+                                  }}
+                                  onOccurrencesChange={(occs) => {
+                                    const sorted = [...occs].sort(
+                                      (a, b) =>
+                                        a.startDate.localeCompare(
+                                          b.startDate,
+                                        ) ||
+                                        a.startTime.localeCompare(b.startTime),
+                                    );
+                                    const first = sorted[0];
+                                    setForm((prev) => ({
+                                      ...prev,
+                                      occurrences: occs,
+                                      isRecurring: occs.length > 1,
+                                      startDate: first?.startDate ?? "",
+                                      startTime: first?.startTime ?? "",
+                                      endDate: first?.endDate ?? "",
+                                      endTime: first?.endTime ?? "",
+                                    }));
+                                    markDirty(
+                                      "event",
+                                      "occurrences",
+                                      "location",
+                                    );
+                                  }}
+                                />
+                              </div>
+                            </ResponsiveModal>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setDetailModalOpen(true)}
+                              className="flex w-full items-center text-left rounded-md px-2 py-1.5 -mx-2 transition-colors hover:bg-muted/50 cursor-pointer"
+                            >
+                              <EventDateField
+                                mode="preview"
+                                value={{
+                                  startDate: form.startDate,
+                                  startTime: form.startTime,
+                                  endDate: form.endDate,
+                                  endTime: form.endTime,
+                                  timezone: form.timezone,
+                                  extraOccurrences:
+                                    form.occurrences.length > 1
+                                      ? form.occurrences.length - 1
+                                      : undefined,
+                                }}
+                              />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDetailModalOpen(true)}
+                              className="flex w-full items-center text-left rounded-md px-2 py-1.5 -mx-2 transition-colors hover:bg-muted/50 cursor-pointer"
+                            >
+                              <EventLocationField
+                                mode="preview"
+                                value={form.location}
+                                extraVenues={
+                                  form.venues.filter((v) => v.type !== "tba")
+                                    .length > 1
+                                    ? form.venues.filter(
+                                        (v) => v.type !== "tba",
+                                      ).length - 1
+                                    : undefined
+                                }
+                              />
+                            </button>
+                            <EventDetailModal
+                              open={detailModalOpen}
+                              onOpenChange={setDetailModalOpen}
+                              dateTime={{
+                                startDate: form.startDate,
+                                startTime: form.startTime,
+                                endDate: form.endDate,
+                                endTime: form.endTime,
+                                timezone: form.timezone,
+                              }}
+                              venues={form.venues}
+                              occurrences={form.occurrences}
+                            />
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div
+                      onFocus={() => handleFieldFocus("hosts")}
+                      onBlur={handleFieldBlur}
+                      className="relative"
+                    >
+                      <CollaboratorBadge
+                        group="hosts"
+                        collaborators={collaborators}
+                      />
+                      <EventHostsField
+                        mode={viewMode}
+                        creatorProfile={creatorProfile}
+                        value={{ ids: form.hostIds, data: hostsData }}
+                        onChange={({ ids, data }) => {
+                          updateField("hostIds", ids);
+                          setHostsData(data);
+                        }}
+                        eventId={eventId}
+                        eventSaved={draftSaved}
+                        onInvitesSent={() => markDirty("hosts")}
+                      />
+                    </div>
+
+                    <div
+                      onFocus={() => handleFieldFocus("pricing")}
+                      onBlur={handleFieldBlur}
+                      className="relative"
+                    >
+                      <CollaboratorBadge
+                        group="pricing"
+                        collaborators={collaborators}
+                      />
+                      <EventPricingField
+                        mode={viewMode}
+                        value={form.pricing}
+                        onChange={(tiers) => updateField("pricing", tiers)}
+                        eventCapacity={form.eventCapacity}
+                        onEventCapacityChange={(cap) =>
+                          updateField("eventCapacity", cap)
+                        }
+                        eventStartDate={form.startDate}
+                        eventStartTime={form.startTime}
+                        onAfterSave={() => flush()}
+                        modalOpen={pricingModalOpen}
+                        onModalOpenChange={setPricingModalOpen}
+                        ticketingEnabled={ticketingEnabled}
+                      />
+                    </div>
+
+                    <div
+                      onFocus={() => handleFieldFocus("links")}
+                      onBlur={handleFieldBlur}
+                      className="relative"
+                    >
+                      <CollaboratorBadge
+                        group="links"
+                        collaborators={collaborators}
+                      />
+                      <EventLinksField
+                        mode={viewMode}
+                        value={form.links}
+                        onChange={(links) => updateField("links", links)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </SectionWrapper>
             </div>
 
-            <div>
-              {isEditing ? (
-                <DndContext
-                  sensors={sectionSensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleSectionDragEnd}
-                >
-                  <SortableContext
-                    items={sectionIds}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    {sections.map((section, i) => (
-                      <SortableSectionWrapper
-                        key={section.type}
-                        id={section.type}
-                      >
-                        {(dragHandleProps) =>
-                          renderSectionContent(section, i, dragHandleProps)
-                        }
-                      </SortableSectionWrapper>
-                    ))}
-                  </SortableContext>
-                </DndContext>
-              ) : (
-                sections.map((section, i) => (
-                  <div key={section.type}>
-                    {renderSectionContent(section, i)}
-                  </div>
-                ))
+            {/* Content cards */}
+            <div
+              className={cn(
+                "mt-10",
+                theme.layout === "classic" ? "space-y-10" : "space-y-6",
               )}
+            >
+              <div className="relative">
+                <CollaboratorBadge
+                  group="event"
+                  collaborators={collaborators}
+                />
+                <EventDescriptionField
+                  mode={viewMode}
+                  value={form.description}
+                  onChange={(v) => updateField("description", v)}
+                  layout={theme.layout}
+                  isDark={cardDark}
+                  onFocusChange={(focused) => {
+                    if (focused) {
+                      handleFieldFocus("event");
+                      markDirty("event");
+                    } else {
+                      focusedFieldRef.current = null;
+                      broadcastFocus(null);
+                    }
+                  }}
+                  locked={getFieldLock("event").locked}
+                  lockedBy={getFieldLock("event").lockedBy}
+                />
+              </div>
 
-              {isEditing && (
-                <div ref={!faqSection ? faqsRef : undefined}>
-                  <AddSectionButton
-                    activeSections={sections.map((s) => s.type)}
-                    onAdd={addSection}
-                    showAttentionBadge={faqBadgeOnAddSection}
-                    isDark={isDark}
-                  />
-                </div>
-              )}
+              <div>
+                {isEditing ? (
+                  <DndContext
+                    sensors={sectionSensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleSectionDragEnd}
+                  >
+                    <SortableContext
+                      items={sectionIds}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      {sections.map((section, i) => (
+                        <SortableSectionWrapper
+                          key={section.type}
+                          id={section.type}
+                        >
+                          {(dragHandleProps) =>
+                            renderSectionContent(section, i, dragHandleProps)
+                          }
+                        </SortableSectionWrapper>
+                      ))}
+                    </SortableContext>
+                  </DndContext>
+                ) : (
+                  sections.map((section, i) => (
+                    <div key={section.type}>
+                      {renderSectionContent(section, i)}
+                    </div>
+                  ))
+                )}
+
+                {isEditing && (
+                  <div ref={!faqSection ? faqsRef : undefined}>
+                    <AddSectionButton
+                      activeSections={sections.map((s) => s.type)}
+                      onAdd={addSection}
+                      showAttentionBadge={faqBadgeOnAddSection}
+                      isDark={isDark}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
+
+        {/* Image manager dialog */}
+        <ImageManagerDialog
+          open={managerOpen}
+          onOpenChange={setManagerOpen}
+          images={carouselImages}
+          onConfirm={handleManagerConfirm}
+          eventId={eventId!}
+        />
+
+        {/* Theme dialog */}
+        <ThemeDialog
+          open={themeOpen}
+          onOpenChange={setThemeOpen}
+          theme={theme}
+          onConfirm={(t) => {
+            setTheme(t);
+            markDirty("theme");
+          }}
+        />
+
+        {/* Floating checklist (edit mode only) */}
+        {isEditing && (
+          <EventChecklist
+            form={form}
+            sections={sections}
+            hasExistingThumbnail={carouselImages.length > 0}
+            elementRefs={checklistRefs}
+            dismissed={dismissed}
+            onDismissChange={setDismissed}
+            isDark={isDark}
+          />
+        )}
+
+        {/* Sticky ticketing button */}
+        {eventId && (
+          <TicketingButton
+            eventId={eventId}
+            mode={previewMode ? "preview" : "edit"}
+            accent={theme.accent}
+            accentCustom={theme.accentCustom}
+            isDark={isDark}
+            draft={eventStatus === "draft"}
+            hasTiers={form.pricing.length > 0}
+            ticketingEnabled={ticketingEnabled}
+            onNoTiersClick={() => setPricingModalOpen(true)}
+            editor
+          />
+        )}
       </div>
-
-      {/* Image manager dialog */}
-      <ImageManagerDialog
-        open={managerOpen}
-        onOpenChange={setManagerOpen}
-        images={carouselImages}
-        onConfirm={handleManagerConfirm}
-        eventId={eventId!}
-      />
-
-      {/* Theme dialog */}
-      <ThemeDialog
-        open={themeOpen}
-        onOpenChange={setThemeOpen}
-        theme={theme}
-        onConfirm={(t) => {
-          setTheme(t);
-          markDirty("theme");
-        }}
-      />
-
-      {/* Floating checklist (edit mode only) */}
-      {isEditing && (
-        <EventChecklist
-          form={form}
-          sections={sections}
-          hasExistingThumbnail={carouselImages.length > 0}
-          elementRefs={checklistRefs}
-          dismissed={dismissed}
-          onDismissChange={setDismissed}
-          isDark={isDark}
-        />
-      )}
-
-      {/* Sticky ticketing button */}
-      {eventId && (
-        <TicketingButton
-          eventId={eventId}
-          mode={previewMode ? "preview" : "edit"}
-          accent={theme.accent}
-          accentCustom={theme.accentCustom}
-          isDark={isDark}
-          draft={eventStatus === "draft"}
-          hasTiers={form.pricing.length > 0}
-          ticketingEnabled={ticketingEnabled}
-          onNoTiersClick={() => setPricingModalOpen(true)}
-          editor
-        />
-      )}
-    </div>
+    </EventEditorContext.Provider>
   );
 }
-
-
-
-
-
-
-

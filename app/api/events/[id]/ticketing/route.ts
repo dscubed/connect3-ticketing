@@ -30,7 +30,7 @@ export async function GET(
 
     return NextResponse.json({
       data: {
-        ticketing: { enabled: eventRow.data?.ticketing_enabled ?? true },
+        ticketing: { enabled: eventRow.data?.ticketing_enabled ?? false },
         fields: fields.data ?? [],
       },
     });

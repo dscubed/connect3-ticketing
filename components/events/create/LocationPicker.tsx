@@ -351,6 +351,28 @@ export function LocationPicker({ value, onChange, open: controlledOpen, onOpenCh
 
   const hasValue = !!value.displayName;
 
+  // Keep a ref so the effect below can read the latest value without
+  // needing value.* in its deps (avoids re-running on every keystroke).
+  const valueRef = useRef(value);
+  valueRef.current = value;
+
+  // When the picker opens in controlled mode (e.g. from a venue edit button),
+  // handleOpen is never called — initialise draft state via effect instead.
+  useEffect(() => {
+    if (!isControlled || !open) return;
+    const v = valueRef.current;
+    setSearchQuery("");
+    if (v.displayName) {
+      setDraftDisplayName(v.displayName);
+      setDraftAddress(v.address || "");
+      setDraftLat(v.lat);
+      setDraftLon(v.lon);
+      setPage("confirm");
+    } else {
+      setPage("search");
+    }
+  }, [open, isControlled]);
+
   const handleOpen = useCallback(() => {
     setSearchQuery("");
     if (hasValue) {

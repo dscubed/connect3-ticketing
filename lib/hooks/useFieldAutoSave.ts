@@ -29,6 +29,7 @@ export function useFieldAutoSave({
   delay = 1500,
 }: UseFieldAutoSaveOptions) {
   const [isSaving, setIsSaving] = useState(false);
+  const [hasPendingChanges, setHasPendingChanges] = useState(false);
   const dirtyGroupsRef = useRef<Set<FieldGroup>>(new Set());
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const savingRef = useRef(false);
@@ -59,6 +60,7 @@ export function useFieldAutoSave({
         timerRef.current = setTimeout(doSave, 0);
       } else {
         timerRef.current = undefined;
+        setHasPendingChanges(false);
       }
     }
   }, []);
@@ -68,6 +70,7 @@ export function useFieldAutoSave({
     (...groups: FieldGroup[]) => {
       if (!enabled) return;
       for (const g of groups) dirtyGroupsRef.current.add(g);
+      setHasPendingChanges(true);
       // Only start a timer if one isn't already ticking (throttle, not debounce)
       if (!timerRef.current) {
         timerRef.current = setTimeout(doSave, delay);
@@ -100,5 +103,5 @@ export function useFieldAutoSave({
 
   useEffect(() => () => clearTimeout(timerRef.current), []);
 
-  return { markDirty, flush, cancel, isDirty, isSaving };
+  return { markDirty, flush, cancel, isDirty, isSaving, hasPendingChanges };
 }

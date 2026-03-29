@@ -38,6 +38,10 @@ import {
   getThemeColors,
   getAccentGradient,
 } from "@/components/events/shared/types";
+import {
+  EventEditorContext,
+  type EventEditorContextValue,
+} from "@/components/events/shared/EventEditorContext";
 import { EditorToolbox } from "@/components/events/shared/EditorToolbox";
 import { useAuthStore } from "@/stores/authStore";
 import { useEventRealtime } from "@/lib/hooks/useEventRealtime";
@@ -56,29 +60,6 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import Image from "next/image";
-
-/* ── Relative time formatting (matches EventForm) ── */
-function formatRelativeTime(date: Date): string {
-  const seconds = Math.round((Date.now() - date.getTime()) / 1000);
-  if (seconds < 10) return "Saved just now";
-  if (seconds < 60) return "Saved seconds ago";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes === 1) return "Saved 1 min ago";
-  if (minutes < 60) return `Saved ${minutes} mins ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours === 1) return "Saved 1 hr ago";
-  if (hours < 24) return `Saved ${hours} hrs ago`;
-  return "Saved a while ago";
-}
-
-function LastSavedLabel({ date }: { date: Date }) {
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 30_000);
-    return () => clearInterval(id);
-  }, [date]);
-  return <>{formatRelativeTime(date)}</>;
-}
 
 /* ── Accent → solid colour ── */
 const ACCENT_SOLID_MAP: Record<
@@ -147,6 +128,7 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
   const [previewMode, setPreviewMode] = useState(mode === "preview");
   const [ticketingEnabled, setTicketingEnabled] = useState(false);
   const [enablingTicketing, setEnablingTicketing] = useState(false);
+  const [disablingTicketing, setDisablingTicketing] = useState(false);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
 
   /* ── Custom ticket fields ── */
@@ -188,9 +170,7 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
   /* ── Load event data ── */
   useEffect(() => {
     fetchEvent(eventId)
-      .then((result) => {
-        setEventData(result);
-      })
+      .then((result) => setEventData(result))
       .catch((err) => {
         console.error("Failed to load event:", err);
         toast.error("Failed to load event");
@@ -199,13 +179,12 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
       .finally(() => setLoading(false));
   }, [eventId, router]);
 
-  /* ── Load ticketing status + fields ── */
+  /* ── Load ticketing status + fields ─��� */
   useEffect(() => {
     fetch(`/api/events/${eventId}/ticketing`)
       .then((res) => res.json())
       .then((json) => {
         setTicketingEnabled(!!json.data?.ticketing?.enabled);
-        /* Map DB fields → draft shape */
         const dbFields = (json.data?.fields ?? []) as {
           id: string;
           label: string;
@@ -230,10 +209,9 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
       .catch(() => {});
   }, [eventId]);
 
-  /* ── Realtime sync (same pattern as EventForm) ── */
+  /* ── Realtime sync ── */
   const onRemoteChange = useCallback(
     (groups: FieldGroup[]) => {
-      // Re-fetch when collaborators make changes
       if (groups.length > 0) {
         fetchEvent(eventId)
           .then((result) => setEventData(result))
@@ -286,7 +264,18 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
     [eventId, broadcast],
   );
 
-  /* ── Auto-save debounce (2s after last edit) ── */
+  /* ── Flush: immediately save pending field changes ── */
+  const flushFields = useCallback(async () => {
+    if (autoSaveTimer.current) {
+      clearTimeout(autoSaveTimer.current);
+      autoSaveTimer.current = null;
+    }
+    if (fieldsDirty) {
+      await saveFields(fields);
+    }
+  }, [fieldsDirty, fields, saveFields]);
+
+  /* ── Auto-save debounce (2s after last edit) ─��� */
   useEffect(() => {
     if (!fieldsDirty || mode !== "edit") return;
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
@@ -341,14 +330,13 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
     [fieldIds],
   );
 
-  /* ── Initialize ticket selection from pricing data ── */
+  /* ── Initialize ticket selection ── */
   useEffect(() => {
     if (eventData?.formData.pricing?.length && !selectedTierId) {
       setSelectedTierId(eventData.formData.pricing[0].id);
     }
   }, [eventData, selectedTierId]);
 
-  /* ── Reset active tab when quantity changes ── */
   useEffect(() => {
     setActiveTicketTab("ticket-0");
   }, [quantity]);
@@ -368,9 +356,8 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
     [theme.accent, theme.accentCustom, isDark],
   );
 
-  /* ── Enable ticketing ── */
+  /* ── Enable / disable ticketing ── */
   const handleEnableTicketing = async () => {
-    /* Guard: require at least one ticket tier */
     const hasTiers = (eventData?.formData.pricing ?? []).length > 0;
     if (!hasTiers) {
       toast.error(
@@ -378,7 +365,6 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
       );
       return;
     }
-
     setEnablingTicketing(true);
     try {
       const res = await fetch(`/api/events/${eventId}/ticketing`, {
@@ -394,8 +380,6 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
     }
   };
 
-  /* ── Disable ticketing ── */
-  const [disablingTicketing, setDisablingTicketing] = useState(false);
   const handleDisableTicketing = async () => {
     setDisablingTicketing(true);
     try {
@@ -414,6 +398,64 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
     }
   };
 
+  /* ── Editor context (only used when mode="edit") ── */
+  const editorContext: EventEditorContextValue | null = useMemo(() => {
+    if (mode !== "edit") return null;
+    return {
+      eventId,
+      mode: "edit" as const,
+      initialUrlSlug: null,
+      previewMode,
+      setPreviewMode,
+      viewMode: previewMode ? ("preview" as const) : ("edit" as const),
+      isEditing: !previewMode,
+      toolbarCollapsed,
+      setToolbarCollapsed,
+      markDirty: () => {},
+      flush: flushFields,
+      isAutoSaving: savingFields,
+      lastSavedAt,
+      eventStatus: "draft" as const,
+      savingPublish: false,
+      draftSaved: true,
+      ticketingEnabled,
+      ticketingChanging: disablingTicketing || enablingTicketing,
+      handleBack: () => router.push(`/events/${eventId}/edit`),
+      handlePublish: () => {},
+      handleUnpublish: () => {},
+      enableTicketing: handleEnableTicketing,
+      disableTicketing: handleDisableTicketing,
+      theme,
+      setTheme: () => {},
+      setThemeOpen: () => {},
+      colors,
+      isDark,
+      hasName: !!eventData?.formData.name,
+      collaborators,
+      getFieldLock: () => ({ locked: false }),
+      handleFieldFocus: () => {},
+      handleFieldBlur: () => {},
+    };
+  }, [
+    mode,
+    eventId,
+    previewMode,
+    toolbarCollapsed,
+    flushFields,
+    savingFields,
+    lastSavedAt,
+    ticketingEnabled,
+    disablingTicketing,
+    enablingTicketing,
+    router,
+    theme,
+    colors,
+    isDark,
+    eventData?.formData.name,
+    collaborators,
+  ]);
+
+  /* ── Loading / error states ── */
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -438,34 +480,12 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
   const solidBg =
     theme.layout === "card" && theme.bgColor ? theme.bgColor : undefined;
 
-  return (
+  const content = (
     <div
       className={cn("min-h-screen pb-12", pageBgClass, isDark && "dark")}
       style={solidBg ? { backgroundColor: solidBg } : undefined}
     >
-      {mode !== "preview" && (
-        <EditorToolbox
-          eventId={eventId}
-          mode={mode}
-          isDark={isDark}
-          toolbarCollapsed={toolbarCollapsed}
-          setToolbarCollapsed={setToolbarCollapsed}
-          onBack={() => router.push(`/events/${eventId}/edit`)}
-          isAutoSaving={savingFields}
-          lastSavedAt={lastSavedAt}
-          LastSavedLabelComponent={
-            lastSavedAt ? <LastSavedLabel date={lastSavedAt} /> : null
-          }
-          collaboratorCount={collaborators.size}
-          previewMode={previewMode}
-          setPreviewMode={setPreviewMode}
-          eventStatus={undefined} // Not handling publish from checkout for now
-          ticketingEnabled={ticketingEnabled}
-          ticketingChanging={disablingTicketing || enablingTicketing}
-          onEnableTicketing={handleEnableTicketing}
-          onDisableTicketing={handleDisableTicketing}
-        />
-      )}
+      {mode !== "preview" && <EditorToolbox />}
 
       {/* Preview mode — back button */}
       {mode === "preview" && (
@@ -502,7 +522,7 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
             )}
           </div>
 
-          {/* ── Ticket Selection Banner (preview mode) ── */}
+          {/* Ticket Selection Banner (preview mode) */}
           {!isEditing && pricing.length > 0 && selectedTier && (
             <div
               className={cn(
@@ -511,7 +531,6 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
                 colors.cardBorder,
               )}
             >
-              {/* Thumbnail */}
               {thumbnailUrl && (
                 <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg">
                   <Image
@@ -523,7 +542,6 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
                 </div>
               )}
 
-              {/* Ticket type selector */}
               <div className="min-w-0 flex-1">
                 {pricing.length > 1 ? (
                   <Select
@@ -553,7 +571,6 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
                 )}
               </div>
 
-              {/* Price */}
               <div className="shrink-0 text-right">
                 <p className={cn("text-lg font-bold", colors.text)}>
                   {selectedTier.price > 0
@@ -567,7 +584,6 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
                 )}
               </div>
 
-              {/* Quantity */}
               <div
                 className={cn(
                   "flex shrink-0 items-center rounded-lg border",
@@ -642,7 +658,7 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
           {/* Sections (show once ticketing is enabled, or in preview mode) */}
           {(ticketingEnabled || mode === "preview") && (
             <>
-              {/* ── Edit mode: flat layout ── */}
+              {/* Edit mode: flat layout */}
               {isEditing && (
                 <div className="mt-8 space-y-8">
                   <SectionWrapper
@@ -733,7 +749,7 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
                 </div>
               )}
 
-              {/* ── Preview mode: per-ticket forms with tabs ── */}
+              {/* Preview mode: per-ticket forms with tabs */}
               {!isEditing && (
                 <>
                   {quantity > 1 ? (
@@ -882,7 +898,7 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
                 </>
               )}
 
-              {/* ── Payment (Coming Soon) ── */}
+              {/* Payment (Coming Soon) */}
               <div className="mt-8">
                 <SectionWrapper
                   title="Payment"
@@ -917,4 +933,15 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
       </div>
     </div>
   );
+
+  /* Wrap in context only when editing (visitor mode has no toolbox) */
+  if (editorContext) {
+    return (
+      <EventEditorContext.Provider value={editorContext}>
+        {content}
+      </EventEditorContext.Provider>
+    );
+  }
+
+  return content;
 }
