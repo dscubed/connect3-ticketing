@@ -33,6 +33,7 @@ import type {
   OccurrenceFormData,
   Venue,
 } from "../shared/types";
+import { useEventEditor } from "../shared/EventEditorContext";
 
 /* ── Timezone helpers ── */
 const POPULAR_TIMEZONES = [
@@ -354,39 +355,51 @@ function AddVenuePanel({ onAdd, onCancel, editingVenue, hideTba }: AddVenuePanel
    DateLocationSection (main export)
    ══════════════════════════════════════════════════ */
 
-interface DateLocationSectionProps {
-  // Date fields
-  timezone: string;
-  occurrences: OccurrenceFormData[];
-  // Location fields (single-location backward compat)
-  locationType: LocationType;
-  location: LocationData;
-  onlineLink: string;
-  // Multi-venue
-  venues: Venue[];
-  // Callbacks
-  onTimezoneChange: (timezone: string) => void;
-  onLocationChange: (data: {
+export function DateLocationSection() {
+  const { form, setForm, markDirty } = useEventEditor();
+  const { timezone, occurrences, locationType, location, onlineLink, venues } = form;
+
+  const onTimezoneChange = (tz: string) => {
+    setForm((prev) => ({ ...prev, timezone: tz }));
+    markDirty("event", "location");
+  };
+
+  const onLocationChange = (partial: {
     locationType?: LocationType;
     location?: LocationData;
     onlineLink?: string;
-  }) => void;
-  onVenuesChange: (venues: Venue[]) => void;
-  onOccurrencesChange: (occurrences: OccurrenceFormData[]) => void;
-}
+  }) => {
+    setForm((prev) => ({
+      ...prev,
+      ...partial,
+      isOnline: (partial.locationType ?? prev.locationType) === "online",
+    }));
+    markDirty("event", "location");
+  };
 
-export function DateLocationSection({
-  timezone,
-  occurrences,
-  locationType,
-  location,
-  onlineLink,
-  venues,
-  onTimezoneChange,
-  onLocationChange,
-  onVenuesChange,
-  onOccurrencesChange,
-}: DateLocationSectionProps) {
+  const onVenuesChange = (updated: Venue[]) => {
+    setForm((prev) => ({ ...prev, venues: updated }));
+    markDirty("event", "location");
+  };
+
+  const onOccurrencesChange = (occs: OccurrenceFormData[]) => {
+    const sorted = [...occs].sort(
+      (a, b) =>
+        a.startDate.localeCompare(b.startDate) ||
+        a.startTime.localeCompare(b.startTime),
+    );
+    const first = sorted[0];
+    setForm((prev) => ({
+      ...prev,
+      occurrences: occs,
+      isRecurring: occs.length > 1,
+      startDate: first?.startDate ?? "",
+      startTime: first?.startTime ?? "",
+      endDate: first?.endDate ?? "",
+      endTime: first?.endTime ?? "",
+    }));
+    markDirty("event", "occurrences", "location");
+  };
   const [occEditorOpen, setOccEditorOpen] = useState(false);
   const [addingVenue, setAddingVenue] = useState(false);
   const [editingVenueId, setEditingVenueId] = useState<string | null>(null);

@@ -1,27 +1,15 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 import { Separator } from "@/components/ui/separator";
 import { ResponsiveModal } from "@/components/ui/responsive-modal";
 import { Pencil } from "lucide-react";
-import { nanoid } from "nanoid";
 import { cn } from "@/lib/utils";
 
 /* ── Shared ── */
-import type {
-  ClubProfile,
-  EventFormData,
-  CarouselImage,
-  EventTheme,
-  Venue,
-} from "./shared/types";
-import {
-  DEFAULT_THEME,
-  getThemeColors,
-  getAccentGradient,
-} from "./shared/types";
+import type { ClubProfile, EventFormData, CarouselImage } from "./shared/types";
 import {
   EventEditorContext,
   type EventEditorContextValue,
@@ -59,65 +47,39 @@ import {
 } from "./EventChecklist";
 import {
   AddSectionButton,
-  createBlankSection,
-  type SectionType,
   type SectionData,
   type FAQSectionData,
   type DragHandleProps,
 } from "./sections";
 import { useAuthStore } from "@/stores/authStore";
 
-import { toast } from "sonner";
-import { createEvent } from "@/lib/api/createEvent";
-import { updateEvent } from "@/lib/api/updateEvent";
-import { patchEvent, type FieldGroup } from "@/lib/api/patchEvent";
-import { fetchEvent } from "@/lib/api/fetchEvent";
-import { useFieldAutoSave } from "@/lib/hooks/useFieldAutoSave";
-import { useEventRealtime } from "@/lib/hooks/useEventRealtime";
-import { useDocumentDark } from "@/lib/hooks/useDocumentDark";
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
+import type { FieldGroup } from "@/lib/api/patchEvent";
+import { DndContext, closestCenter } from "@dnd-kit/core";
 import {
   SortableContext,
-  sortableKeyboardCoordinates,
   verticalListSortingStrategy,
   useSortable,
-  arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
+/* ── Extracted hooks ── */
+import { useEventFormState } from "@/lib/hooks/useEventFormState";
+import { useEventAutoSave } from "@/lib/hooks/useEventAutoSave";
+import { useEventCollaboration } from "@/lib/hooks/useEventCollaboration";
+import { useEventPublish } from "@/lib/hooks/useEventPublish";
+import { useEventTicketing } from "@/lib/hooks/useEventTicketing";
+import { useEventSections } from "@/lib/hooks/useEventSections";
+
+import type { CollaboratorPresence } from "@/lib/hooks/useEventRealtime";
+import type { FetchedEventData } from "@/lib/api/fetchEvent";
+
 interface EventFormProps {
-  /** Pre-filled data for edit mode */
-  initialData?: Partial<EventFormData>;
-  /** Existing image URLs (edit mode) */
-  existingImages?: string[];
-  /** Pre-loaded carousel images (edit mode) */
-  initialCarouselImages?: CarouselImage[];
-  /** Pre-loaded host profile objects (edit mode) */
-  initialHostsData?: ClubProfile[];
-  /** Pre-loaded sections (edit mode) */
-  initialSections?: SectionData[];
-  /** Initial URL Slug (edit mode) */
-  initialUrlSlug?: string | null;
+  /** Fetched event data (edit mode). All initial state is derived from this. */
+  data?: FetchedEventData;
   /** Event ID — required for edit mode */
   eventId?: string;
   /** Form mode */
   mode?: "create" | "edit";
-  /** Current event status (edit mode) */
-  initialStatus?: "draft" | "published" | "archived";
-  /** Whether ticketing is initialized (edit mode) */
-  initialTicketingEnabled?: boolean;
-  /** The event creator's profile (edit mode — fetched from DB) */
-  initialCreatorProfile?: ClubProfile;
-  /** Called on form submit */
-  onSubmit?: (data: EventFormData) => Promise<void>;
 }
 
 /* ── Sortable wrapper for section-level DnD ── */
@@ -157,8 +119,6 @@ function SortableSectionWrapper({
 }
 
 /* ── Collaborative presence badge ── */
-import type { CollaboratorPresence } from "@/lib/hooks/useEventRealtime";
-
 function CollaboratorBadge({
   group,
   collaborators,
@@ -179,36 +139,22 @@ function CollaboratorBadge({
 }
 
 export default function EventForm({
-  initialData,
-  existingImages,
-  initialCarouselImages,
-  initialHostsData,
-  initialSections,
+  data,
   eventId,
   mode = "create",
-  initialStatus = "draft",
-  initialTicketingEnabled = false,
-  initialCreatorProfile,
-  initialUrlSlug = null,
 }: EventFormProps) {
+  const initialStatus = data?.status ?? "draft";
+  const initialTicketingEnabled = data?.ticketingEnabled ?? false;
+  const initialCreatorProfile = data?.creatorProfile;
+  const initialUrlSlug = data?.urlSlug ?? null;
   const router = useRouter();
   const profile = useAuthStore((s) => s.profile);
 
-  /* ── Core state ── */
-  const [saving, setSaving] = useState(false);
-  const [draftSaved, setDraftSaved] = useState(mode === "edit");
-  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(
-    mode === "edit" ? new Date() : null,
-  );
-  const [eventStatus, setEventStatus] = useState<
-    "draft" | "published" | "archived"
-  >(initialStatus);
-  const [ticketingEnabled, setTicketingEnabled] = useState(
-    initialTicketingEnabled,
-  );
-  const [ticketingChanging, setTicketingChanging] = useState(false);
+  /* ── View state ── */
   const [previewMode, setPreviewMode] = useState(false);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
+  const viewMode = previewMode ? "preview" : "edit";
+  const isEditing = !previewMode;
 
   /* ── Modal state ── */
   const [pricingModalOpen, setPricingModalOpen] = useState(false);
@@ -216,41 +162,141 @@ export default function EventForm({
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
-
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
-  const focusedFieldRef = useRef<FieldGroup | null>(null);
 
-  const viewMode = previewMode ? "preview" : "edit";
-  const isEditing = !previewMode;
+  /* ── Form state (hook) ── */
+  const {
+    form,
+    setForm,
+    hostsData,
+    setHostsData,
+    sections,
+    setSections,
+    carouselImages,
+    setCarouselImages,
+    theme,
+    setTheme,
+    colors,
+    isDark,
+    accentGradient,
+    FIELD_TO_GROUP,
+    formRef,
+    carouselImagesRef,
+    sectionsRef,
+  } = useEventFormState({ data });
 
-  /* ── Field → FieldGroup map ── */
-  const FIELD_TO_GROUP: Record<keyof EventFormData, FieldGroup> = useMemo(
-    () => ({
-      name: "event",
-      description: "event",
-      startDate: "event",
-      startTime: "event",
-      endDate: "event",
-      endTime: "event",
-      timezone: "event",
-      isOnline: "event",
-      isRecurring: "event",
-      locationType: "location",
-      onlineLink: "location",
-      venues: "location",
-      category: "event",
-      tags: "event",
-      location: "location",
-      occurrences: "occurrences",
-      imageUrls: "images",
-      hostIds: "hosts",
-      pricing: "pricing",
-      eventCapacity: "pricing",
-      links: "links",
-      theme: "theme",
-    }),
-    [],
+  const pageBgClass = colors.pageBg;
+  const pageTextClass = colors.text;
+
+  /* ── Auto-save (hook) ── */
+  const {
+    markDirty,
+    flush,
+    isAutoSaving,
+    draftSaved,
+    setDraftSaved,
+    lastSavedAt,
+    broadcastRef,
+  } = useEventAutoSave({
+    eventId,
+    formRef,
+    carouselImagesRef,
+    sectionsRef,
+    mode,
+  });
+
+  /* ── Collaboration (hook) ── */
+  const {
+    broadcast,
+    broadcastFocus,
+    collaborators,
+    focusedFieldRef,
+    handleFieldFocus,
+    handleFieldBlur,
+    getFieldLock,
+  } = useEventCollaboration({
+    eventId,
+    userId: profile?.id,
+    userName: profile?.first_name ?? undefined,
+    enabled: draftSaved,
+    broadcastRef,
+    setForm,
+    setCarouselImages,
+    setHostsData,
+    setTheme,
+    setSections,
+  });
+
+  /* ── Publish (hook) ── */
+  const { eventStatus, savingPublish, handlePublish, handleUnpublish } =
+    useEventPublish({
+      eventId,
+      form,
+      carouselImages,
+      sections,
+      draftSaved,
+      setDraftSaved,
+      broadcast,
+      initialStatus,
+    });
+
+  /* ── Ticketing (hook) ── */
+  const {
+    ticketingEnabled,
+    ticketingChanging,
+    enableTicketing,
+    disableTicketing,
+  } = useEventTicketing({
+    eventId,
+    initialEnabled: initialTicketingEnabled,
+    pricingCount: (form.pricing ?? []).length,
+  });
+
+  /* ── Sections (hook) ── */
+  const {
+    addSection,
+    updateSection,
+    removeSection,
+    sectionSensors,
+    sectionIds,
+    handleSectionDragEnd,
+  } = useEventSections({
+    sections,
+    setSections,
+    markDirty,
+  });
+
+  /* ── Image manager ── */
+  const handleManagerConfirm = useCallback(
+    (updated: CarouselImage[]) => {
+      setCarouselImages(updated);
+      markDirty("images");
+    },
+    [setCarouselImages, markDirty],
   );
+
+  /* ── Creator profile ── */
+  const creatorProfile: ClubProfile = initialCreatorProfile ?? {
+    id: profile?.id ?? "",
+    first_name: profile?.first_name ?? "You",
+    avatar_url: profile?.avatar_url ?? null,
+  };
+
+  /* ── Form field update helper ── */
+  const updateField = <K extends keyof EventFormData>(
+    key: K,
+    value: EventFormData[K],
+  ) => {
+    formRef.current = { ...formRef.current, [key]: value };
+    setForm((prev) => ({ ...prev, [key]: value }));
+    markDirty(FIELD_TO_GROUP[key]);
+  };
+
+  /* ── Navigation ── */
+  const handleBack = useCallback(async () => {
+    await flush();
+    router.back();
+  }, [flush, router]);
 
   /* ── Checklist scroll-to refs ── */
   const thumbnailRef = useRef<HTMLDivElement>(null);
@@ -269,502 +315,6 @@ export default function EventForm({
       faqs: faqsRef,
     }),
     [],
-  );
-
-  /* ── Form data ── */
-  const [form, setForm] = useState<EventFormData>({
-    name: initialData?.name ?? "",
-    description: initialData?.description ?? "",
-    startDate: initialData?.startDate ?? "",
-    startTime: initialData?.startTime ?? "",
-    endDate: initialData?.endDate ?? "",
-    endTime: initialData?.endTime ?? "",
-    timezone:
-      initialData?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
-    location: initialData?.location ?? { displayName: "", address: "" },
-    isOnline: initialData?.isOnline ?? false,
-    locationType: initialData?.locationType ?? "tba",
-    onlineLink: initialData?.onlineLink ?? "",
-    venues:
-      initialData?.venues && initialData.venues.length > 0
-        ? initialData.venues
-        : [
-            {
-              id: nanoid(),
-              type: "tba" as const,
-              location: { displayName: "", address: "" },
-            },
-          ],
-    isRecurring: initialData?.isRecurring ?? false,
-    occurrences: initialData?.occurrences ?? [],
-    category: initialData?.category ?? "",
-    tags: initialData?.tags ?? [],
-    hostIds: initialData?.hostIds ?? [],
-    imageUrls: initialData?.imageUrls ?? [],
-    pricing: initialData?.pricing ?? [],
-    eventCapacity: initialData?.eventCapacity ?? null,
-    links: initialData?.links ?? [],
-    theme: initialData?.theme ?? { ...DEFAULT_THEME },
-  } as EventFormData);
-
-  const [hostsData, setHostsData] = useState<ClubProfile[]>(
-    initialHostsData ?? [],
-  );
-  const [sections, setSections] = useState<SectionData[]>(
-    initialSections ?? [],
-  );
-
-  /* ── Images ── */
-  const [carouselImages, setCarouselImages] = useState<CarouselImage[]>(
-    () =>
-      initialCarouselImages ??
-      (existingImages ?? []).map((url, i) => ({
-        id: `existing-${i}`,
-        url,
-      })),
-  );
-
-  /* ── Theme ── */
-  const [theme, setTheme] = useState<EventTheme>(
-    initialData?.theme ?? { ...DEFAULT_THEME },
-  );
-
-  useEffect(() => {
-    const urls = carouselImages
-      .filter((i) => i.url && !i.uploading)
-      .map((i) => i.url);
-    setForm((prev) => ({ ...prev, imageUrls: urls }));
-  }, [carouselImages]);
-
-  useEffect(() => {
-    setForm((prev) => ({ ...prev, theme }));
-  }, [theme]);
-
-  const colors = useMemo(() => getThemeColors(theme.mode), [theme.mode]);
-  const isDark = colors.isDark;
-  useDocumentDark(isDark);
-
-  const pageBgClass = colors.pageBg;
-  const pageTextClass = colors.text;
-  const accentGradient = useMemo(
-    () => getAccentGradient(theme.accent, isDark, theme.accentCustom),
-    [theme.accent, theme.accentCustom, isDark],
-  );
-  const cardDark = isDark;
-
-  /* ── Auto-save ── */
-  const broadcastRef = useRef<(groups: FieldGroup[]) => void>(() => {});
-  const formRef = useRef<EventFormData>(form);
-  const carouselImagesRef = useRef<CarouselImage[]>(carouselImages);
-  const sectionsRef = useRef<SectionData[]>(sections);
-  const draftSavedRef = useRef<boolean>(draftSaved);
-
-  formRef.current = form;
-  carouselImagesRef.current = carouselImages;
-  sectionsRef.current = sections;
-  draftSavedRef.current = draftSaved;
-
-  const performAutoSave = useCallback(
-    async (dirtyGroups: FieldGroup[]) => {
-      const latestForm = formRef.current;
-      const latestImages = carouselImagesRef.current;
-      const latestSections = sectionsRef.current;
-      const latestDraftSaved = draftSavedRef.current;
-      try {
-        if (latestDraftSaved) {
-          await patchEvent(
-            eventId!,
-            dirtyGroups,
-            latestForm,
-            latestImages,
-            latestSections,
-          );
-        } else {
-          await createEvent(
-            eventId!,
-            latestForm,
-            latestImages,
-            latestSections,
-            "draft",
-          );
-          setDraftSaved(true);
-          draftSavedRef.current = true;
-        }
-        broadcastRef.current(dirtyGroups);
-        setLastSavedAt(new Date());
-      } catch (err) {
-        console.error("Auto-save failed:", err);
-        throw err;
-      }
-    },
-    [eventId],
-  );
-
-  const {
-    markDirty,
-    flush,
-    isSaving: isAutoSaving,
-    hasPendingChanges,
-  } = useFieldAutoSave({
-    enabled: !!eventId,
-    onSave: performAutoSave,
-    delay: 2000,
-  });
-
-  const handleManagerConfirm = useCallback(
-    (updated: CarouselImage[]) => {
-      setCarouselImages(updated);
-      markDirty("images");
-    },
-    [markDirty],
-  );
-
-  /* ── Sections ── */
-  const addSection = useCallback(
-    (type: SectionType) => {
-      setSections((prev) => [...prev, createBlankSection(type)]);
-      markDirty(`section:${type}`);
-    },
-    [markDirty],
-  );
-
-  const updateSection = useCallback(
-    (index: number, data: SectionData) => {
-      setSections((prev) => prev.map((s, i) => (i === index ? data : s)));
-      markDirty(`section:${data.type}`);
-    },
-    [markDirty],
-  );
-
-  const removeSection = useCallback(
-    (index: number) => {
-      setSections((prev) => {
-        const removedType = prev[index].type;
-        markDirty(`section:${removedType}`);
-        return prev.filter((_, i) => i !== index);
-      });
-    },
-    [markDirty],
-  );
-
-  /* ── Creator profile ── */
-  const creatorProfile: ClubProfile = initialCreatorProfile ?? {
-    id: profile?.id ?? "",
-    first_name: profile?.first_name ?? "You",
-    avatar_url: profile?.avatar_url ?? null,
-  };
-
-  /* ── Form helpers ── */
-  const updateField = <K extends keyof EventFormData>(
-    key: K,
-    value: EventFormData[K],
-  ) => {
-    formRef.current = { ...formRef.current, [key]: value };
-    setForm((prev) => ({ ...prev, [key]: value }));
-    markDirty(FIELD_TO_GROUP[key]);
-  };
-
-  /* ── Realtime collaboration ── */
-  const handleRemoteChange = useCallback(
-    async (groups: FieldGroup[]) => {
-      if (!eventId || groups.length === 0) return;
-      try {
-        const result = await fetchEvent(eventId);
-        const focused = focusedFieldRef.current;
-
-        for (const g of groups) {
-          if (g === focused) continue;
-
-          switch (g) {
-            case "event":
-              setForm((prev) => ({
-                ...prev,
-                name: result.formData.name ?? "",
-                description: result.formData.description ?? "",
-                startDate: result.formData.startDate ?? "",
-                startTime: result.formData.startTime ?? "",
-                endDate: result.formData.endDate ?? "",
-                endTime: result.formData.endTime ?? "",
-                timezone:
-                  result.formData.timezone ??
-                  Intl.DateTimeFormat().resolvedOptions().timeZone,
-                isOnline: result.formData.isOnline ?? false,
-                isRecurring: result.formData.isRecurring ?? false,
-                locationType: result.formData.locationType ?? "tba",
-                category: result.formData.category ?? "",
-                tags: result.formData.tags ?? [],
-              }));
-              break;
-            case "location":
-              setForm((prev) => ({
-                ...prev,
-                location: result.formData.location ?? {
-                  displayName: "",
-                  address: "",
-                },
-                isOnline: result.formData.isOnline ?? false,
-                locationType: result.formData.locationType ?? "tba",
-                onlineLink: result.formData.onlineLink ?? "",
-              }));
-              break;
-            case "occurrences":
-              setForm((prev) => ({
-                ...prev,
-                occurrences: result.formData.occurrences ?? [],
-                isRecurring: result.formData.isRecurring ?? false,
-              }));
-              break;
-            case "images":
-              setCarouselImages(result.carouselImages);
-              break;
-            case "hosts":
-              setForm((prev) => ({
-                ...prev,
-                hostIds: result.formData.hostIds ?? [],
-              }));
-              setHostsData(result.hostsData);
-              break;
-            case "pricing":
-              setForm((prev) => ({
-                ...prev,
-                pricing: result.formData.pricing ?? [],
-                eventCapacity: result.formData.eventCapacity ?? null,
-              }));
-              break;
-            case "links":
-              setForm((prev) => ({
-                ...prev,
-                links: result.formData.links ?? [],
-              }));
-              break;
-            case "theme":
-              if (result.formData.theme) {
-                setTheme(result.formData.theme);
-                setForm((prev) => ({ ...prev, theme: result.formData.theme! }));
-              }
-              break;
-          }
-        }
-
-        const remoteSectionGroups = groups.filter(
-          (g) => g.startsWith("section:") && g !== focused,
-        );
-        if (remoteSectionGroups.length > 0) {
-          setSections((prev) => {
-            const focusedType = focused?.startsWith("section:")
-              ? focused.split(":")[1]
-              : null;
-            const localFocused = focusedType
-              ? prev.find((s) => s.type === focusedType)
-              : null;
-            return result.sections.map((s) =>
-              s.type === focusedType && localFocused ? localFocused : s,
-            );
-          });
-        }
-      } catch (err) {
-        console.error("Failed to sync remote changes:", err);
-      }
-    },
-    [eventId],
-  );
-
-  const { broadcast, broadcastFocus, collaborators } = useEventRealtime({
-    eventId,
-    userId: profile?.id,
-    userName: profile?.first_name ?? undefined,
-    enabled: draftSaved,
-    onRemoteChange: handleRemoteChange,
-  });
-
-  useEffect(() => {
-    broadcastRef.current = broadcast;
-  }, [broadcast]);
-
-  /* ── beforeunload: only warn when there are unsaved changes ── */
-  useEffect(() => {
-    if (!hasPendingChanges && !isAutoSaving) return;
-    const handler = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-    };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [hasPendingChanges, isAutoSaving]);
-
-  /* ── Navigation ── */
-  const handleBack = useCallback(async () => {
-    await flush();
-    router.back();
-  }, [flush, router]);
-
-  /* ── Publish / Unpublish ── */
-  const handlePublish = async () => {
-    if (!form.category) {
-      toast.error("Please select a category before publishing.");
-      return;
-    }
-    if (!form.name) {
-      toast.error("Please enter an event name before publishing.");
-      return;
-    }
-    setSaving(true);
-    try {
-      if (draftSaved) {
-        await updateEvent(
-          eventId!,
-          form,
-          carouselImages,
-          sections,
-          "published",
-        );
-      } else {
-        await createEvent(
-          eventId!,
-          form,
-          carouselImages,
-          sections,
-          "published",
-        );
-        setDraftSaved(true);
-      }
-      setEventStatus("published");
-      broadcast([
-        "event",
-        "location",
-        "images",
-        "hosts",
-        "pricing",
-        "links",
-        "theme",
-        ...sections.map((s) => `section:${s.type}` as FieldGroup),
-      ]);
-      toast.success("Event published!");
-      router.push(`/events/${eventId}`);
-    } catch (err) {
-      console.error("Failed to publish event:", err);
-      toast.error(
-        err instanceof Error ? err.message : "Failed to publish event",
-      );
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleUnpublish = async () => {
-    setSaving(true);
-    try {
-      await updateEvent(eventId!, form, carouselImages, sections, "draft");
-      setEventStatus("draft");
-      broadcast([
-        "event",
-        "location",
-        "images",
-        "hosts",
-        "pricing",
-        "links",
-        "theme",
-        ...sections.map((s) => `section:${s.type}` as FieldGroup),
-      ]);
-      toast.success("Event unpublished — moved back to drafts.");
-    } catch (err) {
-      console.error("Failed to unpublish event:", err);
-      toast.error(
-        err instanceof Error ? err.message : "Failed to unpublish event",
-      );
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  /* ── Ticketing ── */
-  const enableTicketing = async () => {
-    if (!eventId) return;
-    if ((form.pricing ?? []).length === 0) {
-      toast.error("Add at least one ticket tier before enabling ticketing.");
-      return;
-    }
-    setTicketingChanging(true);
-    try {
-      const res = await fetch(`/api/events/${eventId}/ticketing`, {
-        method: "POST",
-      });
-      if (!res.ok) throw new Error("Failed");
-      setTicketingEnabled(true);
-      toast.success("Ticketing enabled!");
-    } catch {
-      toast.error("Failed to enable ticketing.");
-    } finally {
-      setTicketingChanging(false);
-    }
-  };
-
-  const disableTicketing = async () => {
-    if (!eventId) return;
-    setTicketingChanging(true);
-    try {
-      const res = await fetch(`/api/events/${eventId}/ticketing`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: false }),
-      });
-      if (!res.ok) throw new Error("Failed");
-      setTicketingEnabled(false);
-      toast.success("Ticketing disabled.");
-    } catch {
-      toast.error("Failed to disable ticketing.");
-    } finally {
-      setTicketingChanging(false);
-    }
-  };
-
-  /* ── Section DnD ── */
-  const sectionSensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  );
-
-  const sectionIds = useMemo(() => sections.map((s) => s.type), [sections]);
-
-  const handleSectionDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = sectionIds.indexOf(active.id as SectionType);
-    const newIndex = sectionIds.indexOf(over.id as SectionType);
-    setSections((prev) => arrayMove(prev, oldIndex, newIndex));
-    markDirty(...sections.map((s) => `section:${s.type}` as FieldGroup));
-  };
-
-  /* ── Collaboration helpers ── */
-  const handleFieldFocus = useCallback(
-    (field: FieldGroup) => {
-      focusedFieldRef.current = field;
-      broadcastFocus(field);
-    },
-    [broadcastFocus],
-  );
-
-  const handleFieldBlur = useCallback(
-    (e: React.FocusEvent<HTMLDivElement>) => {
-      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-        focusedFieldRef.current = null;
-        broadcastFocus(null);
-      }
-    },
-    [broadcastFocus],
-  );
-
-  const getFieldLock = useCallback(
-    (group: FieldGroup): { locked: boolean; lockedBy?: string } => {
-      for (const [, collab] of collaborators) {
-        if (collab.focusField === group) {
-          return { locked: true, lockedBy: collab.name };
-        }
-      }
-      return { locked: false };
-    },
-    [collaborators],
   );
 
   /* ── Attention badges ── */
@@ -800,7 +350,7 @@ export default function EventForm({
       isAutoSaving,
       lastSavedAt,
       eventStatus,
-      savingPublish: saving,
+      savingPublish,
       draftSaved,
       ticketingEnabled,
       ticketingChanging,
@@ -811,10 +361,17 @@ export default function EventForm({
       disableTicketing,
       theme,
       setTheme,
-      setThemeOpen,
+      setThemeOpen: setThemeOpen,
       colors,
       isDark,
       hasName: !!form.name,
+      form,
+      setForm,
+      updateField,
+      carouselImages,
+      hostsData,
+      setHostsData,
+      creatorProfile,
       collaborators,
       getFieldLock,
       handleFieldFocus,
@@ -832,15 +389,26 @@ export default function EventForm({
       isAutoSaving,
       lastSavedAt,
       eventStatus,
-      saving,
+      savingPublish,
       draftSaved,
       ticketingEnabled,
       ticketingChanging,
       handleBack,
+      handlePublish,
+      handleUnpublish,
+      enableTicketing,
+      disableTicketing,
       theme,
+      setTheme,
       colors,
       isDark,
-      form.name,
+      form,
+      setForm,
+      updateField,
+      carouselImages,
+      hostsData,
+      setHostsData,
+      creatorProfile,
       collaborators,
       getFieldLock,
       handleFieldFocus,
@@ -866,11 +434,8 @@ export default function EventForm({
           <AttentionBadge show />
         )}
         <EventSectionField
-          mode={viewMode}
           section={section}
           index={index}
-          layout={theme.layout}
-          isDark={cardDark}
           dragHandleProps={dragHandleProps}
           onChange={updateSection}
           onRemove={removeSection}
@@ -928,15 +493,10 @@ export default function EventForm({
                   group="images"
                   collaborators={collaborators}
                 />
-                <EventImageField
-                  mode={viewMode}
-                  images={carouselImages}
-                  existingImages={existingImages}
-                  onEditClick={() => setManagerOpen(true)}
-                />
+                <EventImageField onEditClick={() => setManagerOpen(true)} />
               </div>
 
-              <SectionWrapper title="" layout={theme.layout} isDark={cardDark}>
+              <SectionWrapper title="">
                 <div className="space-y-6">
                   <div
                     onFocus={() => handleFieldFocus("event")}
@@ -946,12 +506,7 @@ export default function EventForm({
                       group="event"
                       collaborators={collaborators}
                     />
-                    <EventNameField
-                      mode={viewMode}
-                      value={form.name}
-                      onChange={(v) => updateField("name", v)}
-                      className={pageTextClass}
-                    />
+                    <EventNameField />
                   </div>
 
                   <div
@@ -962,11 +517,7 @@ export default function EventForm({
                   >
                     <div ref={categoryRef} className="relative">
                       {isEditing && <AttentionBadge show={needsCategory} />}
-                      <EventCategoryField
-                        mode={viewMode}
-                        value={form.category}
-                        onChange={(cat) => updateField("category", cat)}
-                      />
+                      <EventCategoryField />
                     </div>
                     <Separator
                       className={isEditing ? "h-6!" : "h-5!"}
@@ -974,11 +525,7 @@ export default function EventForm({
                     />
                     <div ref={tagsRef} className="relative">
                       {isEditing && <AttentionBadge show={needsTags} />}
-                      <EventTagsField
-                        mode={viewMode}
-                        value={form.tags}
-                        onChange={(tags) => updateField("tags", tags)}
-                      />
+                      <EventTagsField />
                     </div>
                   </div>
 
@@ -1007,20 +554,7 @@ export default function EventForm({
                               onClick={() => setDateLocationModalOpen(true)}
                               className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 -mx-2 text-left transition-colors hover:bg-muted/50"
                             >
-                              <EventDateField
-                                mode="preview"
-                                value={{
-                                  startDate: form.startDate,
-                                  startTime: form.startTime,
-                                  endDate: form.endDate,
-                                  endTime: form.endTime,
-                                  timezone: form.timezone,
-                                  extraOccurrences:
-                                    form.occurrences.length > 1
-                                      ? form.occurrences.length - 1
-                                      : undefined,
-                                }}
-                              />
+                              <EventDateField />
                               <Pencil className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
                             </button>
                             <button
@@ -1028,18 +562,7 @@ export default function EventForm({
                               onClick={() => setDateLocationModalOpen(true)}
                               className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 -mx-2 text-left transition-colors hover:bg-muted/50"
                             >
-                              <EventLocationField
-                                mode="preview"
-                                value={form.location}
-                                extraVenues={
-                                  form.venues.filter((v) => v.type !== "tba")
-                                    .length > 1
-                                    ? form.venues.filter(
-                                        (v) => v.type !== "tba",
-                                      ).length - 1
-                                    : undefined
-                                }
-                              />
+                              <EventLocationField />
                               <Pencil className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
                             </button>
                             <ResponsiveModal
@@ -1049,59 +572,7 @@ export default function EventForm({
                               className="max-w-lg"
                             >
                               <div className="overflow-y-auto max-h-[70vh] pr-1">
-                                <DateLocationSection
-                                  timezone={form.timezone}
-                                  occurrences={form.occurrences}
-                                  locationType={form.locationType}
-                                  location={form.location}
-                                  onlineLink={form.onlineLink}
-                                  venues={form.venues}
-                                  onTimezoneChange={(tz) => {
-                                    setForm((prev) => ({
-                                      ...prev,
-                                      timezone: tz,
-                                    }));
-                                    markDirty("event", "location");
-                                  }}
-                                  onLocationChange={(partial) => {
-                                    setForm((prev) => ({
-                                      ...prev,
-                                      ...partial,
-                                      isOnline:
-                                        (partial.locationType ??
-                                          form.locationType) === "online",
-                                    }));
-                                    markDirty("event", "location");
-                                  }}
-                                  onVenuesChange={(venues) => {
-                                    setForm((prev) => ({ ...prev, venues }));
-                                    markDirty("event", "location");
-                                  }}
-                                  onOccurrencesChange={(occs) => {
-                                    const sorted = [...occs].sort(
-                                      (a, b) =>
-                                        a.startDate.localeCompare(
-                                          b.startDate,
-                                        ) ||
-                                        a.startTime.localeCompare(b.startTime),
-                                    );
-                                    const first = sorted[0];
-                                    setForm((prev) => ({
-                                      ...prev,
-                                      occurrences: occs,
-                                      isRecurring: occs.length > 1,
-                                      startDate: first?.startDate ?? "",
-                                      startTime: first?.startTime ?? "",
-                                      endDate: first?.endDate ?? "",
-                                      endTime: first?.endTime ?? "",
-                                    }));
-                                    markDirty(
-                                      "event",
-                                      "occurrences",
-                                      "location",
-                                    );
-                                  }}
-                                />
+                                <DateLocationSection />
                               </div>
                             </ResponsiveModal>
                           </>
@@ -1112,51 +583,18 @@ export default function EventForm({
                               onClick={() => setDetailModalOpen(true)}
                               className="flex w-full items-center text-left rounded-md px-2 py-1.5 -mx-2 transition-colors hover:bg-muted/50 cursor-pointer"
                             >
-                              <EventDateField
-                                mode="preview"
-                                value={{
-                                  startDate: form.startDate,
-                                  startTime: form.startTime,
-                                  endDate: form.endDate,
-                                  endTime: form.endTime,
-                                  timezone: form.timezone,
-                                  extraOccurrences:
-                                    form.occurrences.length > 1
-                                      ? form.occurrences.length - 1
-                                      : undefined,
-                                }}
-                              />
+                              <EventDateField />
                             </button>
                             <button
                               type="button"
                               onClick={() => setDetailModalOpen(true)}
                               className="flex w-full items-center text-left rounded-md px-2 py-1.5 -mx-2 transition-colors hover:bg-muted/50 cursor-pointer"
                             >
-                              <EventLocationField
-                                mode="preview"
-                                value={form.location}
-                                extraVenues={
-                                  form.venues.filter((v) => v.type !== "tba")
-                                    .length > 1
-                                    ? form.venues.filter(
-                                        (v) => v.type !== "tba",
-                                      ).length - 1
-                                    : undefined
-                                }
-                              />
+                              <EventLocationField />
                             </button>
                             <EventDetailModal
                               open={detailModalOpen}
                               onOpenChange={setDetailModalOpen}
-                              dateTime={{
-                                startDate: form.startDate,
-                                startTime: form.startTime,
-                                endDate: form.endDate,
-                                endTime: form.endTime,
-                                timezone: form.timezone,
-                              }}
-                              venues={form.venues}
-                              occurrences={form.occurrences}
                             />
                           </>
                         )}
@@ -1173,15 +611,6 @@ export default function EventForm({
                         collaborators={collaborators}
                       />
                       <EventHostsField
-                        mode={viewMode}
-                        creatorProfile={creatorProfile}
-                        value={{ ids: form.hostIds, data: hostsData }}
-                        onChange={({ ids, data }) => {
-                          updateField("hostIds", ids);
-                          setHostsData(data);
-                        }}
-                        eventId={eventId}
-                        eventSaved={draftSaved}
                         onInvitesSent={() => markDirty("hosts")}
                       />
                     </div>
@@ -1196,19 +625,9 @@ export default function EventForm({
                         collaborators={collaborators}
                       />
                       <EventPricingField
-                        mode={viewMode}
-                        value={form.pricing}
-                        onChange={(tiers) => updateField("pricing", tiers)}
-                        eventCapacity={form.eventCapacity}
-                        onEventCapacityChange={(cap) =>
-                          updateField("eventCapacity", cap)
-                        }
-                        eventStartDate={form.startDate}
-                        eventStartTime={form.startTime}
                         onAfterSave={() => flush()}
                         modalOpen={pricingModalOpen}
                         onModalOpenChange={setPricingModalOpen}
-                        ticketingEnabled={ticketingEnabled}
                       />
                     </div>
 
@@ -1221,11 +640,7 @@ export default function EventForm({
                         group="links"
                         collaborators={collaborators}
                       />
-                      <EventLinksField
-                        mode={viewMode}
-                        value={form.links}
-                        onChange={(links) => updateField("links", links)}
-                      />
+                      <EventLinksField />
                     </div>
                   </div>
                 </div>
@@ -1245,11 +660,6 @@ export default function EventForm({
                   collaborators={collaborators}
                 />
                 <EventDescriptionField
-                  mode={viewMode}
-                  value={form.description}
-                  onChange={(v) => updateField("description", v)}
-                  layout={theme.layout}
-                  isDark={cardDark}
                   onFocusChange={(focused) => {
                     if (focused) {
                       handleFieldFocus("event");
@@ -1301,7 +711,6 @@ export default function EventForm({
                       activeSections={sections.map((s) => s.type)}
                       onAdd={addSection}
                       showAttentionBadge={faqBadgeOnAddSection}
-                      isDark={isDark}
                     />
                   </div>
                 )}
@@ -1339,7 +748,6 @@ export default function EventForm({
             elementRefs={checklistRefs}
             dismissed={dismissed}
             onDismissChange={setDismissed}
-            isDark={isDark}
           />
         )}
 
@@ -1347,12 +755,7 @@ export default function EventForm({
         {eventId && (
           <TicketingButton
             eventId={eventId}
-            mode={previewMode ? "preview" : "edit"}
-            accent={theme.accent}
-            accentCustom={theme.accentCustom}
-            isDark={isDark}
             draft={eventStatus === "draft"}
-            hasTiers={form.pricing.length > 0}
             ticketingEnabled={ticketingEnabled}
             onNoTiersClick={() => setPricingModalOpen(true)}
             editor

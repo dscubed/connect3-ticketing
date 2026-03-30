@@ -109,6 +109,51 @@ npm run lint -- --fix
 4. Real-time updates via `useEventRealtime` hook (Supabase Realtime)
 5. API routes in `/app/api/events` handle mutations (create, update, patch)
 
+### EventEditorContext (Ambient Editor State)
+
+`EventEditorContext` (`components/events/shared/EventEditorContext.tsx`) provides ambient editor state to all components inside the event editor without prop drilling. It is **provided** by `EventForm` and (conditionally) by `CheckoutForm`.
+
+**What goes in context (ambient state):**
+- Theme: `theme`, `colors`, `isDark` — visual appearance shared by all components
+- Auto-save: `markDirty()`, `flush()`, `isAutoSaving`, `lastSavedAt`
+- Editor state: `mode`, `viewMode`, `previewMode`, `toolbarCollapsed`
+- Actions: `handlePublish`, `handleBack`, `enableTicketing`, etc.
+- Collaboration: `collaborators`, `getFieldLock()`, `handleFieldFocus()`
+
+**What stays as props (per-instance data):**
+- `value` / `onChange` — controlled component pattern for form fields
+- `mode` ("edit" | "preview") — can vary per field instance
+- `locked` / `lockedBy` — per-field collaboration locks
+- `onFocusChange` — per-field focus callbacks
+
+**Hooks:**
+- `useEventEditor()` — throws if no provider (for components that require the editor context)
+- `useEditorTheme()` — returns `null` outside a provider (safe for components used in both editor and visitor pages)
+
+**Pattern for shared components (SectionWrapper, TicketingButton, etc.):**
+```tsx
+const ctx = useEditorTheme(); // null-safe
+const isDark = isDarkProp ?? ctx?.isDark;
+const layout = layoutProp ?? ctx?.theme.layout ?? "card";
+```
+Props are still accepted for visitor pages (no provider), but when inside the editor the context is used automatically.
+
+### Editor Hooks (Logic Extraction)
+
+EventForm and CheckoutForm logic is split into reusable hooks in `/lib/hooks/`:
+
+| Hook | Purpose | Used by |
+|---|---|---|
+| `useEventFormState` | Core form data, images, sections, hosts, theme, derived colors | EventForm |
+| `useEventAutoSave` | Throttled auto-save (create draft → patch), beforeunload guard | EventForm |
+| `useEventCollaboration` | Realtime presence, remote change reconciliation, field locks | EventForm |
+| `useEventPublish` | Publish / unpublish actions | EventForm |
+| `useEventTicketing` | Enable / disable ticketing | **Both** EventForm and CheckoutForm |
+| `useEventSections` | Section CRUD + drag-and-drop reordering | EventForm |
+| `useCheckoutFields` | Custom ticket field CRUD, auto-save, DnD | CheckoutForm |
+
+**Navigation pattern**: Switching between event editor and checkout editor uses `router.replace` (not `router.push`) to avoid flooding the browser history stack. The Back button takes users out of the editor entirely.
+
 ### Date & Location Editing Pattern
 
 In the event editor (`EventForm`), date and location are **not** inline editors. Instead:

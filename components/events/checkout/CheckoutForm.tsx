@@ -1,22 +1,16 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, CreditCard, Minus, Plus } from "lucide-react";
 import {
   DndContext,
   closestCenter,
-  PointerSensor,
-  KeyboardSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
   verticalListSortingStrategy,
   useSortable,
-  arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui/button";
@@ -29,9 +23,6 @@ import { fetchEvent, type FetchedEventData } from "@/lib/api/fetchEvent";
 import { SectionWrapper } from "@/components/events/preview/SectionWrapper";
 import {
   CHECKOUT_PRESET_FIELDS,
-  type TicketingFieldDraft,
-  type TicketingFieldType,
-  createBlankField,
 } from "@/lib/types/ticketing";
 import type { ThemeAccent, EventTheme } from "@/components/events/shared/types";
 import {
@@ -46,6 +37,8 @@ import { EditorToolbox } from "@/components/events/shared/EditorToolbox";
 import { useAuthStore } from "@/stores/authStore";
 import { useEventRealtime } from "@/lib/hooks/useEventRealtime";
 import { useDocumentDark } from "@/lib/hooks/useDocumentDark";
+import { useEventTicketing } from "@/lib/hooks/useEventTicketing";
+import { useCheckoutFields } from "@/lib/hooks/useCheckoutFields";
 import type { FieldGroup } from "@/lib/api/patchEvent";
 import { toast } from "sonner";
 import { TicketFieldCard } from "./TicketFieldCard";
@@ -126,22 +119,17 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
   const [eventData, setEventData] = useState<FetchedEventData | null>(null);
   const [loading, setLoading] = useState(true);
   const [previewMode, setPreviewMode] = useState(mode === "preview");
-  const [ticketingEnabled, setTicketingEnabled] = useState(false);
-  const [enablingTicketing, setEnablingTicketing] = useState(false);
-  const [disablingTicketing, setDisablingTicketing] = useState(false);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
-
-  /* ── Custom ticket fields ── */
-  const [fields, setFields] = useState<TicketingFieldDraft[]>([]);
-  const [fieldsDirty, setFieldsDirty] = useState(false);
-  const [savingFields, setSavingFields] = useState(false);
-  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
-  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* ── Ticket selection (preview mode) ── */
   const [selectedTierId, setSelectedTierId] = useState<string>("");
-  const [quantity, setQuantity] = useState(1);
+  const [quantity, _setQuantity] = useState(1);
   const [activeTicketTab, setActiveTicketTab] = useState("ticket-0");
+
+  const setQuantity = useCallback((update: number | ((q: number) => number)) => {
+    _setQuantity(update);
+    setActiveTicketTab("ticket-0");
+  }, []);
 
   /* ── Attendee data: attendeeData[ticketIndex][fieldKey] = value ── */
   const [attendeeData, setAttendeeData] = useState<
@@ -179,36 +167,6 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
       .finally(() => setLoading(false));
   }, [eventId, router]);
 
-  /* ── Load ticketing status + fields ─��� */
-  useEffect(() => {
-    fetch(`/api/events/${eventId}/ticketing`)
-      .then((res) => res.json())
-      .then((json) => {
-        setTicketingEnabled(!!json.data?.ticketing?.enabled);
-        const dbFields = (json.data?.fields ?? []) as {
-          id: string;
-          label: string;
-          input_type: TicketingFieldType;
-          placeholder: string | null;
-          required: boolean;
-          options: string[] | null;
-          sort_order: number;
-        }[];
-        setFields(
-          dbFields.map((f) => ({
-            id: f.id,
-            label: f.label,
-            input_type: f.input_type,
-            placeholder: f.placeholder ?? "",
-            required: f.required,
-            options: f.options ?? [],
-            sort_order: f.sort_order,
-          })),
-        );
-      })
-      .catch(() => {});
-  }, [eventId]);
-
   /* ── Realtime sync ── */
   const onRemoteChange = useCallback(
     (groups: FieldGroup[]) => {
@@ -229,124 +187,49 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
     onRemoteChange,
   });
 
-  /* ── Save fields to API ── */
-  const saveFields = useCallback(
-    async (fieldsToSave: TicketingFieldDraft[]) => {
-      setSavingFields(true);
-      try {
-        const res = await fetch(`/api/events/${eventId}/ticketing`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            fields: fieldsToSave.map((f, i) => ({
-              label: f.label,
-              input_type: f.input_type,
-              placeholder: f.placeholder || null,
-              required: f.required,
-              options:
-                f.input_type === "select" || f.input_type === "multiselect"
-                  ? f.options
-                  : null,
-              sort_order: i,
-            })),
-          }),
-        });
-        if (!res.ok) throw new Error("Failed");
-        setFieldsDirty(false);
-        setLastSavedAt(new Date());
-        broadcast(["event"] as FieldGroup[]);
-      } catch {
-        toast.error("Failed to save fields");
-      } finally {
-        setSavingFields(false);
-      }
-    },
-    [eventId, broadcast],
-  );
+  /* ── Ticketing (shared hook) ── */
+  const {
+    ticketingEnabled,
+    ticketingChanging,
+    enableTicketing: handleEnableTicketing,
+    disableTicketing: handleDisableTicketing,
+  } = useEventTicketing({
+    eventId,
+    initialEnabled: eventData?.ticketingEnabled ?? false,
+    pricingCount: eventData?.formData.pricing?.length ?? 0,
+  });
 
-  /* ── Flush: immediately save pending field changes ── */
-  const flushFields = useCallback(async () => {
-    if (autoSaveTimer.current) {
-      clearTimeout(autoSaveTimer.current);
-      autoSaveTimer.current = null;
-    }
-    if (fieldsDirty) {
-      await saveFields(fields);
-    }
-  }, [fieldsDirty, fields, saveFields]);
+  /* ── Checkout fields (hook) ── */
+  const {
+    fields,
+    addField,
+    updateField,
+    removeField,
+    savingFields,
+    lastSavedAt,
+    flushFields,
+    dndSensors,
+    fieldIds,
+    handleFieldDragEnd,
+  } = useCheckoutFields({
+    eventId,
+    mode,
+    broadcast,
+  });
 
-  /* ── Auto-save debounce (2s after last edit) ─��� */
-  useEffect(() => {
-    if (!fieldsDirty || mode !== "edit") return;
-    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-    autoSaveTimer.current = setTimeout(() => {
-      saveFields(fields);
-    }, 2000);
-    return () => {
-      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-    };
-  }, [fields, fieldsDirty, saveFields, mode]);
-
-  /* ── Field CRUD helpers ── */
-  const addField = useCallback(
-    (type: TicketingFieldType) => {
-      const newField = createBlankField(type, fields.length);
-      setFields((prev) => [...prev, newField]);
-      setFieldsDirty(true);
-    },
-    [fields.length],
-  );
-
-  const updateField = useCallback(
-    (id: string, updated: TicketingFieldDraft) => {
-      setFields((prev) => prev.map((f) => (f.id === id ? updated : f)));
-      setFieldsDirty(true);
-    },
-    [],
-  );
-
-  const removeField = useCallback((id: string) => {
-    setFields((prev) => prev.filter((f) => f.id !== id));
-    setFieldsDirty(true);
-  }, []);
-
-  /* ── DnD for field reordering ── */
-  const dndSensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor),
-  );
-
-  const fieldIds = useMemo(() => fields.map((f) => f.id), [fields]);
-
-  const handleFieldDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      const { active, over } = event;
-      if (!over || active.id === over.id) return;
-      const oldIndex = fieldIds.indexOf(active.id as string);
-      const newIndex = fieldIds.indexOf(over.id as string);
-      setFields((prev) => arrayMove(prev, oldIndex, newIndex));
-      setFieldsDirty(true);
-    },
-    [fieldIds],
-  );
-
-  /* ── Initialize ticket selection ── */
-  useEffect(() => {
-    if (eventData?.formData.pricing?.length && !selectedTierId) {
-      setSelectedTierId(eventData.formData.pricing[0].id);
-    }
-  }, [eventData, selectedTierId]);
-
-  useEffect(() => {
-    setActiveTicketTab("ticket-0");
-  }, [quantity]);
+  /* ── Initialize ticket selection when data loads ── */
+  const defaultTierId = eventData?.formData.pricing?.[0]?.id ?? "";
+  const effectiveSelectedTierId = selectedTierId || defaultTierId;
 
   /* ── Theme ── */
-  const theme: EventTheme = eventData?.formData.theme ?? {
-    mode: "adaptive" as const,
-    layout: "card" as const,
-    accent: "none" as const,
-  };
+  const theme: EventTheme = useMemo(
+    () => eventData?.formData.theme ?? {
+      mode: "adaptive" as const,
+      layout: "card" as const,
+      accent: "none" as const,
+    },
+    [eventData?.formData.theme],
+  );
   const colors = useMemo(() => getThemeColors(theme.mode), [theme.mode]);
   const isDark = colors.isDark;
   useDocumentDark(isDark);
@@ -355,48 +238,6 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
     () => getAccentGradient(theme.accent, isDark, theme.accentCustom),
     [theme.accent, theme.accentCustom, isDark],
   );
-
-  /* ── Enable / disable ticketing ── */
-  const handleEnableTicketing = async () => {
-    const hasTiers = (eventData?.formData.pricing ?? []).length > 0;
-    if (!hasTiers) {
-      toast.error(
-        "Add at least one ticket tier to your event before enabling ticketing.",
-      );
-      return;
-    }
-    setEnablingTicketing(true);
-    try {
-      const res = await fetch(`/api/events/${eventId}/ticketing`, {
-        method: "POST",
-      });
-      if (!res.ok) throw new Error("Failed");
-      setTicketingEnabled(true);
-      toast.success("Ticketing enabled!");
-    } catch {
-      toast.error("Failed to enable ticketing");
-    } finally {
-      setEnablingTicketing(false);
-    }
-  };
-
-  const handleDisableTicketing = async () => {
-    setDisablingTicketing(true);
-    try {
-      const res = await fetch(`/api/events/${eventId}/ticketing`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: false }),
-      });
-      if (!res.ok) throw new Error("Failed");
-      setTicketingEnabled(false);
-      toast.success("Ticketing disabled");
-    } catch {
-      toast.error("Failed to disable ticketing");
-    } finally {
-      setDisablingTicketing(false);
-    }
-  };
 
   /* ── Editor context (only used when mode="edit") ── */
   const editorContext: EventEditorContextValue | null = useMemo(() => {
@@ -415,12 +256,12 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
       flush: flushFields,
       isAutoSaving: savingFields,
       lastSavedAt,
-      eventStatus: "draft" as const,
+      eventStatus: (eventData?.status ?? "draft") as "draft" | "published" | "archived",
       savingPublish: false,
       draftSaved: true,
       ticketingEnabled,
-      ticketingChanging: disablingTicketing || enablingTicketing,
-      handleBack: () => router.push(`/events/${eventId}/edit`),
+      ticketingChanging,
+      handleBack: () => router.replace(`/events/${eventId}/edit`),
       handlePublish: () => {},
       handleUnpublish: () => {},
       enableTicketing: handleEnableTicketing,
@@ -445,13 +286,15 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
     savingFields,
     lastSavedAt,
     ticketingEnabled,
-    disablingTicketing,
-    enablingTicketing,
+    ticketingChanging,
+    handleEnableTicketing,
+    handleDisableTicketing,
     router,
     theme,
     colors,
     isDark,
     eventData?.formData.name,
+    eventData?.status,
     collaborators,
   ]);
 
@@ -472,7 +315,7 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
     eventData.formData.imageUrls?.[0] ??
     null;
   const selectedTier =
-    pricing.find((t) => t.id === selectedTierId) ?? pricing[0] ?? null;
+    pricing.find((t) => t.id === effectiveSelectedTierId) ?? pricing[0] ?? null;
   const FEE_PER_TICKET = 0.75;
 
   const pageBgClass = colors.pageBg;
@@ -545,7 +388,7 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
               <div className="min-w-0 flex-1">
                 {pricing.length > 1 ? (
                   <Select
-                    value={selectedTierId}
+                    value={effectiveSelectedTierId}
                     onValueChange={setSelectedTierId}
                   >
                     <SelectTrigger
@@ -645,9 +488,9 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
                     : undefined
                 }
                 onClick={handleEnableTicketing}
-                disabled={enablingTicketing || pricing.length === 0}
+                disabled={ticketingChanging || pricing.length === 0}
               >
-                {enablingTicketing && (
+                {ticketingChanging && (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 )}
                 Enable Ticketing

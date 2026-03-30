@@ -1,34 +1,31 @@
 "use client";
 
-import type { ClubProfile, HostsValue } from "../shared/types";
 import { HostsDialog } from "../create/HostsDialog";
 import { HostsDisplay } from "../preview/HostsDisplay";
 import { Users } from "lucide-react";
+import { useEventEditor } from "../shared/EventEditorContext";
 
 interface EventHostsFieldProps {
-  mode: "edit" | "preview";
-  creatorProfile: ClubProfile;
-  value: HostsValue;
-  onChange?: (value: HostsValue) => void;
-  /** Event ID for invite management */
-  eventId?: string;
-  /** Whether the event row exists in DB */
-  eventSaved?: boolean;
   /** Callback after invites are sent */
   onInvitesSent?: () => void;
 }
 
-export function EventHostsField({
-  mode,
-  creatorProfile,
-  value,
-  onChange,
-  eventId,
-  eventSaved = false,
-  onInvitesSent,
-}: EventHostsFieldProps) {
+export function EventHostsField({ onInvitesSent }: EventHostsFieldProps) {
+  const {
+    viewMode: mode,
+    form,
+    updateField,
+    hostsData,
+    setHostsData,
+    creatorProfile,
+    eventId,
+    draftSaved,
+  } = useEventEditor();
+
+  const value = { ids: form.hostIds, data: hostsData };
+
   if (mode === "preview") {
-    return <HostsDisplay creatorProfile={creatorProfile} value={value.data} />;
+    return <HostsDisplay creatorProfile={creatorProfile} value={hostsData} />;
   }
 
   return (
@@ -37,9 +34,12 @@ export function EventHostsField({
       <HostsDialog
         creatorProfile={creatorProfile}
         value={value}
-        onChange={onChange ?? (() => {})}
+        onChange={({ ids, data }) => {
+          updateField("hostIds", ids);
+          setHostsData(data);
+        }}
         eventId={eventId}
-        eventSaved={eventSaved}
+        eventSaved={draftSaved}
         onInvitesSent={onInvitesSent}
       />
     </div>

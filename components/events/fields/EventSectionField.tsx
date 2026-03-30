@@ -12,7 +12,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import type { SectionData, DragHandleProps } from "../sections";
-import type { ThemeLayout } from "../shared/types";
+import { useEditorTheme } from "../shared/EventEditorContext";
 import {
   FAQSectionCard,
   WhatToBringSectionCard,
@@ -55,11 +55,8 @@ const SECTION_META: Record<
 };
 
 interface EventSectionFieldProps {
-  mode: "edit" | "preview";
   section: SectionData;
   index: number;
-  layout?: ThemeLayout;
-  isDark?: boolean;
   dragHandleProps?: DragHandleProps;
   onChange?: (index: number, data: SectionData) => void;
   onRemove?: (index: number) => void;
@@ -72,11 +69,8 @@ interface EventSectionFieldProps {
 }
 
 export function EventSectionField({
-  mode,
   section,
   index,
-  layout = "card",
-  isDark,
   dragHandleProps,
   onChange,
   onRemove,
@@ -84,6 +78,9 @@ export function EventSectionField({
   locked,
   lockedBy,
 }: EventSectionFieldProps) {
+  const ctx = useEditorTheme();
+  const isDark = ctx?.isDark;
+  const mode = ctx?.viewMode ?? "preview";
   const [focused, setFocused] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -243,8 +240,6 @@ export function EventSectionField({
         <SectionWrapper
           title={meta.title}
           icon={meta.icon}
-          layout={layout}
-          isDark={isDark}
           headerLeft={headerLeft}
           headerRight={headerRight}
         >

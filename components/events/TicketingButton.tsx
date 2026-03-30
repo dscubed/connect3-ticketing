@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ThemeAccent } from "@/components/events/shared/types";
+import { useEditorTheme } from "@/components/events/shared/EventEditorContext";
 import { TooltipContent, TooltipTrigger, Tooltip } from "../ui/tooltip";
 import { toast } from "sonner";
 
@@ -36,13 +37,15 @@ function getAccentButtonStyle(
 
 interface TicketingButtonProps {
   eventId: string;
-  /** "edit" = shows "Setup Ticketing"; "preview" = shows "Get Tickets" or hidden */
-  mode: "edit" | "preview";
+  /** "edit" = shows "Setup Ticketing"; "preview" = shows "Get Tickets" or hidden.
+   *  When omitted, reads viewMode from EventEditorContext. */
+  mode?: "edit" | "preview";
   accent?: ThemeAccent;
   accentCustom?: string;
   isDark?: boolean;
   draft?: boolean;
   /** Whether the event has at least one ticket tier. Defaults to true. */
+  /** Whether the event has at least one ticket tier. Read from context when inside the editor. */
   hasTiers?: boolean;
   /** Whether the button is in edit form. Defaults to false. */
   editor?: boolean;
@@ -57,19 +60,28 @@ interface TicketingButtonProps {
  *
  * Desktop: centered card-style container that blends with the theme.
  * Mobile:  full-width sticky footer bar.
+ *
+ * `accent`, `accentCustom`, and `isDark` are read from EventEditorContext
+ * when available, with explicit props taking precedence.
  */
 export function TicketingButton({
   eventId,
-  mode,
-  accent = "none",
-  accentCustom,
-  isDark = false,
+  mode: modeProp,
+  accent: accentProp,
+  accentCustom: accentCustomProp,
+  isDark: isDarkProp,
   draft = false,
-  hasTiers = true,
+  hasTiers: hasTiersProp,
   editor = false,
   onNoTiersClick,
   ticketingEnabled = null,
 }: TicketingButtonProps) {
+  const ctx = useEditorTheme();
+  const mode = modeProp ?? ctx?.viewMode ?? "preview";
+  const accent = accentProp ?? ctx?.theme.accent ?? "none";
+  const accentCustom = accentCustomProp ?? ctx?.theme.accentCustom;
+  const isDark = isDarkProp ?? ctx?.isDark ?? false;
+  const hasTiers = hasTiersProp ?? (ctx?.form ? ctx.form.pricing.length > 0 : true);
   const router = useRouter();
 
   // Track our own state only if null is provided
@@ -151,7 +163,7 @@ export function TicketingButton({
     }
 
     if (editor) {
-      router.push(`/events/${eventId}/checkout/edit`);
+      router.replace(`/events/${eventId}/checkout/edit`);
     } else {
       router.push(`/events/${eventId}/checkout`);
     }

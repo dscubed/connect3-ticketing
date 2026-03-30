@@ -1,34 +1,26 @@
 "use client";
 
 import { useMemo } from "react";
-import type { CarouselImage } from "../shared/types";
 import { ImageCarousel } from "../create/ImageCarousel";
 import { ImageCarouselPreview } from "../preview/ImageCarouselPreview";
+import { useEventEditor } from "../shared/EventEditorContext";
 
 interface EventImageFieldProps {
-  mode: "edit" | "preview";
-  images: CarouselImage[];
-  existingImages?: string[];
   onEditClick?: () => void;
 }
 
-export function EventImageField({
-  mode,
-  images,
-  existingImages,
-  onEditClick,
-}: EventImageFieldProps) {
-  const previewUrls = useMemo(
-    () => images.filter((i) => i.url && !i.uploading).map((i) => i.url),
-    [images],
+export function EventImageField({ onEditClick }: EventImageFieldProps) {
+  const { viewMode: mode, carouselImages } = useEventEditor();
+  const urls = useMemo(
+    () => carouselImages.filter((i) => i.url && !i.uploading).map((i) => i.url),
+    [carouselImages],
   );
-  const urls = previewUrls.length > 0 ? previewUrls : (existingImages ?? []);
 
   if (mode === "preview") {
     return <ImageCarouselPreview value={urls} />;
   }
 
   return (
-    <ImageCarousel images={images} onEditClick={onEditClick ?? (() => {})} />
+    <ImageCarousel images={carouselImages} onEditClick={onEditClick ?? (() => {})} />
   );
 }

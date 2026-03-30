@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/accordion";
 import { CalendarDays, MapPin, Globe, ExternalLink } from "lucide-react";
 import type { DateTimeData, OccurrenceFormData, Venue } from "../shared/types";
+import { useEventEditor } from "../shared/EventEditorContext";
 
 const LocationMap = dynamic(
   () =>
@@ -165,18 +166,19 @@ function VenueInlineList({ venues }: { venues: Venue[] }) {
 interface EventDetailModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  dateTime: DateTimeData;
-  venues: Venue[];
-  occurrences: OccurrenceFormData[];
 }
 
-export function EventDetailModal({
-  open,
-  onOpenChange,
-  dateTime,
-  venues,
-  occurrences,
-}: EventDetailModalProps) {
+export function EventDetailModal({ open, onOpenChange }: EventDetailModalProps) {
+  const { form } = useEventEditor();
+  const dateTime: DateTimeData = {
+    startDate: form.startDate,
+    startTime: form.startTime,
+    endDate: form.endDate,
+    endTime: form.endTime,
+    timezone: form.timezone,
+  };
+  const venues: Venue[] = form.venues;
+  const occurrences: OccurrenceFormData[] = form.occurrences;
   const realVenues = useMemo(
     () => venues.filter((v) => v.type !== "tba"),
     [venues],

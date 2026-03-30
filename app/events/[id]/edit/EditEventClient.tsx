@@ -45,21 +45,5 @@ export default function EditEventClient({ eventId }: { eventId: string }) {
 
   if (!data) return null;
 
-  return (
-    <EventForm
-      mode="edit"
-      eventId={eventId}
-      initialData={data.formData}
-      existingImages={data.existingImages}
-      initialCarouselImages={data.carouselImages}
-      initialHostsData={data.hostsData}
-      initialSections={data.sections}
-      initialStatus={data.status}
-      initialTicketingEnabled={data.ticketingEnabled}
-      initialCreatorProfile={data.creatorProfile}
-      initialUrlSlug={data.urlSlug}
-    />
-  );
+  return <EventForm mode="edit" eventId={eventId} data={data} />;
 }
-
-

@@ -1,12 +1,15 @@
+"use client";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import type { ThemeLayout } from "../shared/types";
+import { useEditorTheme } from "../shared/EventEditorContext";
 import { cn } from "@/lib/utils";
 
 interface SectionWrapperProps {
   title: string;
   icon?: React.ReactNode;
-  layout: ThemeLayout;
+  layout?: ThemeLayout;
   /** When true, applies dark surface colours to the card. */
   isDark?: boolean;
   /** Slot rendered before the icon/title (e.g. drag handle in edit mode). */
@@ -21,16 +24,22 @@ interface SectionWrapperProps {
  *
  * - **card** layout: renders inside a shadcn `<Card>`.
  * - **classic** layout: renders a heading + separator, then bare content.
+ *
+ * `layout` and `isDark` are read from `EventEditorContext` when available,
+ * with explicit props taking precedence (for visitor pages without a provider).
  */
 export function SectionWrapper({
   title,
   icon,
-  layout,
-  isDark,
+  layout: layoutProp,
+  isDark: isDarkProp,
   headerLeft,
   headerRight,
   children,
 }: SectionWrapperProps) {
+  const ctx = useEditorTheme();
+  const layout = layoutProp ?? ctx?.theme.layout ?? "card";
+  const isDark = isDarkProp ?? ctx?.isDark;
   const hasHeader = !!(title || icon || headerLeft || headerRight);
 
   if (layout === "classic") {

@@ -18,6 +18,7 @@ import {
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { SECTION_TYPES, SECTION_META, type SectionType } from "./types";
+import { useEditorTheme } from "../shared/EventEditorContext";
 
 export const SECTION_ICON_MAP: Record<SectionType, React.ElementType> = {
   faq: HelpCircle,
@@ -33,15 +34,15 @@ interface AddSectionButtonProps {
   onAdd: (type: SectionType) => void;
   /** Show a pinging blue dot on the button */
   showAttentionBadge?: boolean;
-  isDark?: boolean;
 }
 
 export function AddSectionButton({
   activeSections,
   onAdd,
   showAttentionBadge,
-  isDark,
 }: AddSectionButtonProps) {
+  const ctx = useEditorTheme();
+  const isDark = ctx?.isDark;
   const [open, setOpen] = useState(false);
 
   const availableTypes = SECTION_TYPES.filter(

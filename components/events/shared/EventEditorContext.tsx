@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import type { EventFormData, EventTheme, ThemeColors } from "./types";
+import type { EventTheme, ThemeColors, EventFormData, CarouselImage, ClubProfile } from "./types";
 import type { FieldGroup } from "@/lib/api/patchEvent";
 import type { CollaboratorPresence } from "@/lib/hooks/useEventRealtime";
 
@@ -50,8 +50,17 @@ export interface EventEditorContextValue {
   colors: ThemeColors;
   isDark: boolean;
 
-  /* ── Form (read-only access for derived checks) ── */
+  /* ── Derived form flags ── */
   hasName: boolean;
+
+  /* ── Form state (accessible by field components) ── */
+  form: EventFormData;
+  setForm: React.Dispatch<React.SetStateAction<EventFormData>>;
+  updateField: <K extends keyof EventFormData>(key: K, value: EventFormData[K]) => void;
+  carouselImages: CarouselImage[];
+  hostsData: ClubProfile[];
+  setHostsData: React.Dispatch<React.SetStateAction<ClubProfile[]>>;
+  creatorProfile: ClubProfile;
 
   /* ── Collaboration ── */
   collaborators: Map<string, CollaboratorPresence>;
@@ -71,6 +80,14 @@ export function useEventEditor(): EventEditorContextValue {
     );
   }
   return ctx;
+}
+
+/**
+ * Safe theme accessor — returns `null` when outside a provider (e.g. visitor pages).
+ * Components use this to read ambient theme props with a prop fallback.
+ */
+export function useEditorTheme() {
+  return useContext(EventEditorContext);
 }
 
 export { EventEditorContext };

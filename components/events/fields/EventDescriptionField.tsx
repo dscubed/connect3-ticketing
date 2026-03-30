@@ -3,17 +3,12 @@
 import { useState, useRef, useEffect } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { SectionWrapper } from "../preview/SectionWrapper";
-import type { ThemeLayout } from "../shared/types";
+import { useEventEditor } from "../shared/EventEditorContext";
 import { cn } from "@/lib/utils";
 import { Lock } from "lucide-react";
 import { toast } from "sonner";
 
 interface EventDescriptionFieldProps {
-  mode: "edit" | "preview";
-  value: string;
-  onChange?: (value: string) => void;
-  layout?: ThemeLayout;
-  isDark?: boolean;
   /** Called when the inline focus state changes (true = focused, false = blurred). */
   onFocusChange?: (focused: boolean) => void;
   /** When true, another collaborator is editing this section. */
@@ -23,15 +18,12 @@ interface EventDescriptionFieldProps {
 }
 
 export function EventDescriptionField({
-  mode,
-  value,
-  onChange,
-  layout = "card",
-  isDark,
   onFocusChange,
   locked,
   lockedBy,
 }: EventDescriptionFieldProps) {
+  const { isDark, viewMode: mode, form, updateField } = useEventEditor();
+  const value = form.description;
   const [focused, setFocused] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -82,13 +74,13 @@ export function EventDescriptionField({
         </div>
       )}
 
-      <SectionWrapper title="Event Description" layout={layout} isDark={isDark}>
+      <SectionWrapper title="Event Description">
         {showEdit ? (
           <Textarea
             autoFocus
             placeholder="Tell people what your event is about..."
             value={value}
-            onChange={(e) => onChange?.(e.target.value)}
+            onChange={(e) => updateField("description", e.target.value)}
             rows={6}
             className={cn(
               "resize-none",

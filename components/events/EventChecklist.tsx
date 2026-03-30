@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { EventFormData } from "./shared/types";
 import type { SectionData, FAQSectionData } from "./sections";
+import { useEditorTheme } from "./shared/EventEditorContext";
 
 interface ChecklistItem {
   id: string;
@@ -78,7 +79,6 @@ export interface EventChecklistProps {
   /** Externally-managed set of dismissed item ids */
   dismissed: Set<string>;
   onDismissChange: (dismissed: Set<string>) => void;
-  isDark?: boolean;
 }
 
 export function EventChecklist({
@@ -88,8 +88,9 @@ export function EventChecklist({
   elementRefs,
   dismissed,
   onDismissChange,
-  isDark,
 }: EventChecklistProps) {
+  const ctx = useEditorTheme();
+  const isDark = ctx?.isDark;
   const [collapsed, setCollapsed] = useState(true);
 
   const effectiveForm = useMemo(
