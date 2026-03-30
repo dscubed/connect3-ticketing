@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AuthProvider } from "@/components/providers/AuthProvider";
-import { NotFoundProvider } from "@/components/providers/NotFoundProvider";
+import { NavbarDisplayProvider } from "@/components/providers/NavbarDisplayProvider";
 import { NavbarWrapper } from "@/components/layout/NavbarWrapper";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
@@ -71,10 +71,10 @@ export default function RootLayout({
       >
         <TooltipProvider>
           <AuthProvider>
-            <NotFoundProvider>
+            <NavbarDisplayProvider>
               <NavbarWrapper />
               {children}
-            </NotFoundProvider>
+            </NavbarDisplayProvider>
           </AuthProvider>
           <Toaster />
         </TooltipProvider>

@@ -1,12 +1,12 @@
 "use client";
 
-import { useNotFound } from "@/components/providers/NotFoundProvider";
+import { useNavbarDisplay } from "@/components/providers/NavbarDisplayProvider";
 import { Navbar } from "./Navbar";
 
 export function NavbarWrapper() {
-  const { isNotFound } = useNotFound();
+  const { navbarDisplay } = useNavbarDisplay();
 
-  if (isNotFound) {
+  if (!navbarDisplay) {
     return null;
   }
 

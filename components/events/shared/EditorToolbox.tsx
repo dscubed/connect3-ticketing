@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
   ArrowLeft,
@@ -16,7 +16,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useEventEditor, LastSavedLabel } from "./EventEditorContext";
 import { SettingsModal } from "./toolbox/SettingsModal";
-
+import { NavUserMenu } from "@/components/auth/NavUserMenu";
+import { Separator } from "@/components/ui/separator";
 export function EditorToolbox() {
   const {
     eventId,
@@ -44,7 +45,7 @@ export function EditorToolbox() {
     <>
       <div
         className={cn(
-          "sticky top-14 z-40 border-b transition-all shadow-lg",
+          "fixed w-full top-0 z-40 border-b transition-all shadow-lg",
           isDark
             ? "border-neutral-700/60 bg-neutral-900/60 text-neutral-100 backdrop-blur-xl"
             : "bg-background/95 backdrop-blur",
@@ -67,7 +68,7 @@ export function EditorToolbox() {
             <span className="hidden sm:inline">Back</span>
           </Button>
 
-          <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="flex items-center gap-2 sm:gap-3">
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
               {isAutoSaving ? (
                 <>
@@ -85,34 +86,35 @@ export function EditorToolbox() {
               </span>
             )}
 
+            <Separator orientation="vertical" className="h-4! bg-border/80" />
+
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               className="gap-1.5"
               onClick={() => setPreviewMode((p) => !p)}
             >
               {previewMode ? (
                 <>
-                  <Pencil className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Edit</span>
+                  <Pencil className="size-3.5!" />
                 </>
               ) : (
                 <>
-                  <Eye className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Preview</span>
+                  <Eye className="size-3.5!" />
                 </>
               )}
             </Button>
 
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               className="gap-1.5 shrink-0"
               onClick={() => setSettingsOpen(true)}
             >
-              <Settings className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Settings</span>
+              <Settings className="size-3.5!" />
             </Button>
+
+            <NavUserMenu />
           </div>
         </div>
 
@@ -182,6 +184,7 @@ export function EditorToolbox() {
           </div>
         )}
       </div>
+      <div className="h-14" />
 
       <SettingsModal
         settingsOpen={settingsOpen}

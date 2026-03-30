@@ -13,13 +13,21 @@ const SSO_BASE =
  *
  * @param origin - The origin (e.g., "https://ticket.connect3.app")
  * @param redirectPath - The path on this app to redirect to after login (default: "/")
+ * @param mode - "login" (default) or "signup"
  */
 export function getLoginUrl(
   origin: string,
   redirectPath: string = "/",
+  mode: "login" | "signup" = "login",
 ): string {
   const callbackUrl = `${origin}/auth/callback`;
   const finalRedirect = `${origin}${redirectPath}`;
 
-  return `${SSO_BASE}?redirect_to=${encodeURIComponent(callbackUrl)}&next=${encodeURIComponent(finalRedirect)}`;
+  const params = new URLSearchParams({
+    redirect_to: callbackUrl,
+    next: finalRedirect,
+    ...(mode === "signup" ? { mode: "signup" } : {}),
+  });
+
+  return `${SSO_BASE}?${params.toString()}`;
 }

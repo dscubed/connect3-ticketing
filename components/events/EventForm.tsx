@@ -36,6 +36,7 @@ import { EventDetailModal } from "./preview/EventDetailModal";
 import { ImageManagerDialog } from "./create/ImageManagerDialog";
 import { ThemeDialog } from "./create/ThemeDialog";
 import { SectionWrapper } from "./preview/SectionWrapper";
+import { EventPreviewHeader } from "./preview/EventPreviewHeader";
 import { TicketingButton } from "./TicketingButton";
 import { EditorToolbox } from "./shared/EditorToolbox";
 
@@ -78,6 +79,11 @@ interface EventFormProps {
   data?: FetchedEventData;
   /** Event ID */
   eventId?: string;
+  /**
+   * When "preview": visitor-facing read-only display. No toolbar, no auto-save,
+   * no collaboration. Starts in previewMode. The page keeps its Navbar.
+   */
+  mode?: "preview";
 }
 
 /* ── Sortable wrapper for section-level DnD ── */
@@ -136,10 +142,8 @@ function CollaboratorBadge({
   );
 }
 
-export default function EventForm({
-  data,
-  eventId,
-}: EventFormProps) {
+export default function EventForm({ data, eventId, mode }: EventFormProps) {
+  const isVisitorPreview = mode === "preview";
   const initialStatus = data?.status ?? "draft";
   const initialTicketingEnabled = data?.ticketingEnabled ?? false;
   const initialCreatorProfile = data?.creatorProfile;
@@ -148,7 +152,7 @@ export default function EventForm({
   const profile = useAuthStore((s) => s.profile);
 
   /* ── View state ── */
-  const [previewMode, setPreviewMode] = useState(false);
+  const [previewMode, setPreviewMode] = useState(isVisitorPreview);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
   const viewMode = previewMode ? "preview" : "edit";
   const isEditing = !previewMode;
@@ -195,7 +199,7 @@ export default function EventForm({
     lastSavedAt,
     broadcastRef,
   } = useEventAutoSave({
-    eventId,
+    eventId: isVisitorPreview ? undefined : eventId,
     formRef,
     carouselImagesRef,
     sectionsRef,
@@ -214,7 +218,7 @@ export default function EventForm({
     eventId,
     userId: profile?.id,
     userName: profile?.first_name ?? undefined,
-    enabled: draftSaved,
+    enabled: isVisitorPreview ? false : draftSaved,
     broadcastRef,
     setForm,
     setCarouselImages,
@@ -279,7 +283,12 @@ export default function EventForm({
         first_name: profile?.first_name ?? "You",
         avatar_url: profile?.avatar_url ?? null,
       },
-    [initialCreatorProfile, profile?.id, profile?.first_name, profile?.avatar_url],
+    [
+      initialCreatorProfile,
+      profile?.id,
+      profile?.first_name,
+      profile?.avatar_url,
+    ],
   );
 
   /* ── Form field update helper ── */
@@ -462,22 +471,22 @@ export default function EventForm({
   return (
     <EventEditorContext.Provider value={editorContext}>
       <div
-        className={cn(
-          "min-h-screen pb-12",
-          pageBgClass,
-          colors.isDark && "dark",
-        )}
+        className={cn("min-h-screen", pageBgClass, colors.isDark && "dark")}
         style={solidBg ? { backgroundColor: solidBg } : undefined}
       >
-        <EditorToolbox />
-
         {/* Full-width accent gradient overlay */}
         <div
           style={accentGradient ? { background: accentGradient } : undefined}
         >
+          {isVisitorPreview ? (
+            <EventPreviewHeader isDark={isDark} />
+          ) : (
+            <EditorToolbox />
+          )}
           <div
             className={cn(
-              "mx-auto max-w-4xl px-3 pb-6 pt-12 sm:px-6 sm:pb-8",
+              "mx-auto max-w-4xl px-3 sm:px-6",
+              isVisitorPreview ? "py-6 sm:py-8" : "pb-6 pt-20 sm:pb-8",
               pageTextClass,
             )}
           >
@@ -719,28 +728,32 @@ export default function EventForm({
           </div>
         </div>
 
-        {/* Image manager dialog */}
-        <ImageManagerDialog
-          open={managerOpen}
-          onOpenChange={setManagerOpen}
-          images={carouselImages}
-          onConfirm={handleManagerConfirm}
-          eventId={eventId!}
-        />
+        {/* Image manager dialog (editor only) */}
+        {!isVisitorPreview && (
+          <ImageManagerDialog
+            open={managerOpen}
+            onOpenChange={setManagerOpen}
+            images={carouselImages}
+            onConfirm={handleManagerConfirm}
+            eventId={eventId!}
+          />
+        )}
 
-        {/* Theme dialog */}
-        <ThemeDialog
-          open={themeOpen}
-          onOpenChange={setThemeOpen}
-          theme={theme}
-          onConfirm={(t) => {
-            setTheme(t);
-            markDirty("theme");
-          }}
-        />
+        {/* Theme dialog (editor only) */}
+        {!isVisitorPreview && (
+          <ThemeDialog
+            open={themeOpen}
+            onOpenChange={setThemeOpen}
+            theme={theme}
+            onConfirm={(t) => {
+              setTheme(t);
+              markDirty("theme");
+            }}
+          />
+        )}
 
-        {/* Floating checklist (edit mode only) */}
-        {isEditing && (
+        {/* Floating checklist (editor only) */}
+        {!isVisitorPreview && isEditing && (
           <EventChecklist
             form={form}
             sections={sections}
@@ -751,8 +764,8 @@ export default function EventForm({
           />
         )}
 
-        {/* Sticky ticketing button */}
-        {eventId && (
+        {/* Sticky ticketing button (editor only — visitor page adds its own) */}
+        {!isVisitorPreview && eventId && (
           <TicketingButton
             eventId={eventId}
             draft={eventStatus === "draft"}

@@ -3,9 +3,10 @@ import type { Metadata } from "next";
 import {
   fetchEventServer,
   getAllPublishedEventIds,
+  publicToFetchedData,
 } from "@/lib/api/fetchEventServer";
 import { TicketingButton } from "@/components/events/TicketingButton";
-import { ServerEventPreviewDisplay } from "@/components/events/preview/ServerEventPreviewDisplay";
+import EventForm from "@/components/events/EventForm";
 import type { ThemeAccent } from "@/components/events/shared/types";
 
 /* ── Static generation ─────────────────────────────────────────── */
@@ -108,56 +109,56 @@ function EventJsonLd({
       : "https://schema.org/OfflineEventAttendanceMode",
     ...(event.location && !event.is_online
       ? {
-        location: {
-          "@type": "Place",
-          name: event.location.venue ?? undefined,
-          address: event.location.address ?? undefined,
-          ...(event.location.latitude && event.location.longitude
-            ? {
-              geo: {
-                "@type": "GeoCoordinates",
-                latitude: event.location.latitude,
-                longitude: event.location.longitude,
-              },
-            }
-            : {}),
-        },
-      }
-      : event.is_online
-        ? {
           location: {
-            "@type": "VirtualLocation",
-            url: `${SITE_URL}/events/${event.id}`,
+            "@type": "Place",
+            name: event.location.venue ?? undefined,
+            address: event.location.address ?? undefined,
+            ...(event.location.latitude && event.location.longitude
+              ? {
+                  geo: {
+                    "@type": "GeoCoordinates",
+                    latitude: event.location.latitude,
+                    longitude: event.location.longitude,
+                  },
+                }
+              : {}),
           },
         }
+      : event.is_online
+        ? {
+            location: {
+              "@type": "VirtualLocation",
+              url: `${SITE_URL}/events/${event.id}`,
+            },
+          }
         : {}),
     ...(event.images[0]?.url ? { image: event.images[0].url } : {}),
     organizer: event.creator_profile
       ? {
-        "@type": "Organization",
-        name: event.creator_profile.first_name,
-      }
+          "@type": "Organization",
+          name: event.creator_profile.first_name,
+        }
       : undefined,
     ...(event.ticket_tiers.length > 0
       ? {
-        offers: event.ticket_tiers.map((t) => ({
-          "@type": "Offer",
-          name: t.name,
-          price: t.price,
-          priceCurrency: "AUD",
-          availability: "https://schema.org/InStock",
-          url: `${SITE_URL}/events/${event.id}`,
-        })),
-      }
+          offers: event.ticket_tiers.map((t) => ({
+            "@type": "Offer",
+            name: t.name,
+            price: t.price,
+            priceCurrency: "AUD",
+            availability: "https://schema.org/InStock",
+            url: `${SITE_URL}/events/${event.id}`,
+          })),
+        }
       : {
-        offers: {
-          "@type": "Offer",
-          price: 0,
-          priceCurrency: "AUD",
-          availability: "https://schema.org/InStock",
-          url: `${SITE_URL}/events/${event.id}`,
-        },
-      }),
+          offers: {
+            "@type": "Offer",
+            price: 0,
+            priceCurrency: "AUD",
+            availability: "https://schema.org/InStock",
+            url: `${SITE_URL}/events/${event.id}`,
+          },
+        }),
   };
 
   return (
@@ -183,8 +184,12 @@ export default async function EventPage({
   return (
     <>
       <EventJsonLd event={event} />
-      <ServerEventPreviewDisplay event={event} />
-      {/* Sticky ticketing button (preview mode — only shows if ticketing is enabled) */}
+      <EventForm
+        mode="preview"
+        eventId={event.id}
+        data={publicToFetchedData(event)}
+      />
+      {/* Sticky ticketing button (visitor mode — only shows if ticketing is enabled) */}
       <TicketingButton
         eventId={id}
         mode="preview"

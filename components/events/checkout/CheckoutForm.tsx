@@ -3,10 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, CreditCard, Minus, Plus } from "lucide-react";
-import {
-  DndContext,
-  closestCenter,
-} from "@dnd-kit/core";
+import { DndContext, closestCenter } from "@dnd-kit/core";
 import {
   SortableContext,
   verticalListSortingStrategy,
@@ -21,10 +18,13 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { fetchEvent, type FetchedEventData } from "@/lib/api/fetchEvent";
 import { SectionWrapper } from "@/components/events/preview/SectionWrapper";
-import {
-  CHECKOUT_PRESET_FIELDS,
-} from "@/lib/types/ticketing";
-import type { ThemeAccent, EventTheme, ClubProfile, EventFormData } from "@/components/events/shared/types";
+import { CHECKOUT_PRESET_FIELDS } from "@/lib/types/ticketing";
+import type {
+  ThemeAccent,
+  EventTheme,
+  ClubProfile,
+  EventFormData,
+} from "@/components/events/shared/types";
 import {
   getThemeColors,
   getAccentGradient,
@@ -34,6 +34,7 @@ import {
   type EventEditorContextValue,
 } from "@/components/events/shared/EventEditorContext";
 import { EditorToolbox } from "@/components/events/shared/EditorToolbox";
+import { useNavbarDisplay } from "@/components/providers/NavbarDisplayProvider";
 import { useAuthStore } from "@/stores/authStore";
 import { useEventRealtime } from "@/lib/hooks/useEventRealtime";
 import { useDocumentDark } from "@/lib/hooks/useDocumentDark";
@@ -116,20 +117,31 @@ interface CheckoutFormProps {
 export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
   const router = useRouter();
   const profile = useAuthStore((s) => s.profile);
+  const { setNavbarDisplay } = useNavbarDisplay();
   const [eventData, setEventData] = useState<FetchedEventData | null>(null);
   const [loading, setLoading] = useState(true);
   const [previewMode, setPreviewMode] = useState(mode === "preview");
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
+
+  /* ── Hide the site navbar in visitor/preview mode so gradient covers full viewport ── */
+  useEffect(() => {
+    if (mode !== "preview") return;
+    setNavbarDisplay(false);
+    return () => setNavbarDisplay(true);
+  }, [mode, setNavbarDisplay]);
 
   /* ── Ticket selection (preview mode) ── */
   const [selectedTierId, setSelectedTierId] = useState<string>("");
   const [quantity, _setQuantity] = useState(1);
   const [activeTicketTab, setActiveTicketTab] = useState("ticket-0");
 
-  const setQuantity = useCallback((update: number | ((q: number) => number)) => {
-    _setQuantity(update);
-    setActiveTicketTab("ticket-0");
-  }, []);
+  const setQuantity = useCallback(
+    (update: number | ((q: number) => number)) => {
+      _setQuantity(update);
+      setActiveTicketTab("ticket-0");
+    },
+    [],
+  );
 
   /* ── Attendee data: attendeeData[ticketIndex][fieldKey] = value ── */
   const [attendeeData, setAttendeeData] = useState<
@@ -223,11 +235,12 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
 
   /* ── Theme ── */
   const theme: EventTheme = useMemo(
-    () => eventData?.formData.theme ?? {
-      mode: "adaptive" as const,
-      layout: "card" as const,
-      accent: "none" as const,
-    },
+    () =>
+      eventData?.formData.theme ?? {
+        mode: "adaptive" as const,
+        layout: "card" as const,
+        accent: "none" as const,
+      },
     [eventData?.formData.theme],
   );
   const colors = useMemo(() => getThemeColors(theme.mode), [theme.mode]);
@@ -256,7 +269,10 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
       flush: flushFields,
       isAutoSaving: savingFields,
       lastSavedAt,
-      eventStatus: (eventData.status ?? "draft") as "draft" | "published" | "archived",
+      eventStatus: (eventData.status ?? "draft") as
+        | "draft"
+        | "published"
+        | "archived",
       savingPublish: false,
       draftSaved: true,
       ticketingEnabled,
@@ -300,9 +316,7 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
     theme,
     colors,
     isDark,
-    eventData?.formData,
-    eventData?.status,
-    eventData?.carouselImages,
+    eventData,
     profile,
     collaborators,
   ]);
@@ -339,13 +353,18 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
     >
       {mode !== "preview" && <EditorToolbox />}
 
-      {/* Preview mode — back button */}
+      {/* Preview mode — transparent fixed back button floating over gradient */}
       {mode === "preview" && (
-        <div className="mx-auto max-w-3xl px-3 py-2 sm:px-6">
+        <div className="fixed top-0 left-0 right-0 z-50 px-3 py-2 sm:px-6">
           <Button
             variant="ghost"
             size="sm"
-            className="gap-2"
+            className={cn(
+              "gap-2",
+              isDark
+                ? "text-white/70 hover:text-white hover:bg-white/10"
+                : "text-black/60 hover:text-black hover:bg-black/10",
+            )}
             onClick={() => router.push(`/events/${eventId}`)}
           >
             <ArrowLeft className="h-4 w-4" />
@@ -354,14 +373,18 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
         </div>
       )}
 
-      {/* Accent gradient */}
+      {/* Accent gradient — starts from very top in preview mode */}
       <div style={accentGradient ? { background: accentGradient } : undefined}>
         <div
           className={cn(
-            "mx-auto max-w-3xl px-3 py-6 sm:px-6 sm:py-8",
+            "mx-auto max-w-3xl px-3 sm:px-6",
+            mode === "preview" ? "py-6 sm:py-8 pt-10" : "py-6 sm:py-8",
             pageTextClass,
           )}
         >
+          {/* Padding for toolbox (edit mode only) */}
+          {mode !== "preview" && <div className="h-14" />}
+
           {/* Title */}
           <div className="mb-2">
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">

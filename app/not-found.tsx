@@ -3,15 +3,15 @@
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useEffect } from "react";
-import { useNotFound } from "@/components/providers/NotFoundProvider";
+import { useNavbarDisplay } from "@/components/providers/NavbarDisplayProvider";
 
 export default function NotFound() {
-  const { setIsNotFound } = useNotFound();
+  const { setNavbarDisplay } = useNavbarDisplay();
 
   useEffect(() => {
-    setIsNotFound(true);
-    return () => setIsNotFound(false);
-  }, [setIsNotFound]);
+    setNavbarDisplay(false);
+    return () => setNavbarDisplay(true);
+  }, [setNavbarDisplay]);
 
   return (
     <div className="h-dvh flex flex-col items-center justify-center bg-black ">

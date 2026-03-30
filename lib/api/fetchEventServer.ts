@@ -1,5 +1,20 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getClubAdminRow } from "@/lib/auth/clubAdmin";
+import type { FetchedEventData } from "@/lib/api/fetchEvent";
+import type {
+  EventFormData,
+  EventTheme,
+  EventLink,
+  TicketTier,
+  LocationData,
+  LocationType,
+  Venue,
+  CarouselImage,
+  ClubProfile,
+} from "@/components/events/shared/types";
+import { DEFAULT_THEME } from "@/components/events/shared/types";
+import type { SectionData, SectionType } from "@/components/events/sections/types";
+import { splitUtcTimestampInTimeZone } from "@/lib/utils/timezone";
 
 /**
  * Minimal event data for the public event page (server-side only).
@@ -285,3 +300,159 @@ export async function checkEventEditAccess(
   return { allowed: false, reason: "forbidden" };
 }
 
+/* ── Section type mapping (DB uses underscores, SectionData uses dashes) ── */
+const DB_SECTION_TYPE_MAP: Record<string, SectionType> = {
+  faq: "faq",
+  what_to_bring: "what-to-bring",
+  "what-to-bring": "what-to-bring",
+  panelists: "panelists",
+  companies: "companies",
+  refund_policy: "refund-policy",
+  "refund-policy": "refund-policy",
+};
+
+/**
+ * Convert PublicEventData (server-fetched) into FetchedEventData
+ * so it can be passed directly to EventForm.
+ */
+export function publicToFetchedData(event: PublicEventData): FetchedEventData {
+  const tz = event.timezone ?? "Australia/Sydney";
+
+  const startParts = event.start
+    ? splitUtcTimestampInTimeZone(event.start, tz)
+    : null;
+  const endParts = event.end
+    ? splitUtcTimestampInTimeZone(event.end, tz)
+    : null;
+
+  const locationType: LocationType = event.is_online
+    ? "online"
+    : event.location
+      ? "physical"
+      : "tba";
+
+  const location: LocationData = {
+    displayName: event.location?.venue ?? "",
+    address: event.location?.address ?? "",
+    lat: event.location?.latitude ?? undefined,
+    lon: event.location?.longitude ?? undefined,
+  };
+
+  const venues: Venue[] = [];
+  if (locationType === "online") {
+    venues.push({
+      id: "venue-online",
+      type: "online",
+      location: { displayName: "", address: "" },
+      onlineLink: "",
+    });
+  } else if (locationType !== "tba" && location.displayName) {
+    venues.push({ id: "venue-primary", type: locationType, location });
+  }
+
+  const occurrences = startParts
+    ? [
+        {
+          id: `pub-${event.id}`,
+          startDate: startParts.date,
+          startTime: startParts.time,
+          endDate: endParts?.date ?? startParts.date,
+          endTime: endParts?.time ?? "",
+        },
+      ]
+    : [];
+
+  const theme: EventTheme = event.theme
+    ? {
+        mode: event.theme.mode as EventTheme["mode"],
+        layout: event.theme.layout as EventTheme["layout"],
+        accent: event.theme.accent as EventTheme["accent"],
+        accentCustom: event.theme.accent_custom ?? undefined,
+        bgColor: event.theme.bg_color ?? undefined,
+      }
+    : { ...DEFAULT_THEME };
+
+  const pricing: TicketTier[] = event.ticket_tiers.map((t) => ({
+    id: t.id,
+    memberVerification: t.member_verification,
+    name: t.name,
+    price: t.price,
+    quantity: t.quantity,
+  }));
+
+  const links: EventLink[] = event.links.map((l) => ({
+    id: l.id,
+    url: l.url,
+    title: l.title ?? "",
+  }));
+
+  const existingImages = event.images.map((i) => i.url);
+  const carouselImages: CarouselImage[] = event.images.map((i) => ({
+    id: i.id,
+    url: i.url,
+  }));
+
+  const hostsData: ClubProfile[] = event.hosts
+    .filter(
+      (h) => (h.status === "accepted" || h.status === "pending") && h.profiles,
+    )
+    .map((h) => ({
+      id: h.profiles!.id,
+      first_name: h.profiles!.first_name,
+      avatar_url: h.profiles!.avatar_url,
+    }));
+
+  const sections: SectionData[] = event.sections
+    .map((s) => {
+      const type = DB_SECTION_TYPE_MAP[s.type];
+      if (!type) return null;
+      return { type, ...(s.data as object) } as SectionData;
+    })
+    .filter((s): s is SectionData => s !== null);
+
+  const creatorProfile: ClubProfile | undefined = event.creator_profile
+    ? {
+        id: event.creator_profile.id,
+        first_name: event.creator_profile.first_name,
+        avatar_url: event.creator_profile.avatar_url,
+      }
+    : undefined;
+
+  const formData: Partial<EventFormData> = {
+    name: event.name ?? "",
+    description: event.description ?? "",
+    startDate: startParts?.date ?? "",
+    startTime: startParts?.time ?? "",
+    endDate: endParts?.date ?? "",
+    endTime: endParts?.time ?? "",
+    timezone: tz,
+    location,
+    isOnline: event.is_online,
+    locationType,
+    onlineLink: "",
+    venues,
+    isRecurring: false,
+    occurrences,
+    category: event.category ?? "",
+    tags: event.tags ?? [],
+    hostIds: hostsData.map((h) => h.id),
+    imageUrls: existingImages,
+    pricing,
+    eventCapacity: event.event_capacity,
+    links,
+    theme,
+  };
+
+  return {
+    formData,
+    existingImages,
+    carouselImages,
+    hostsData,
+    sections,
+    creatorProfileId: event.creator_profile_id,
+    creatorProfile,
+    urlSlug: null,
+    status: event.status as "draft" | "published" | "archived",
+    ticketingEnabled: event.ticketing?.enabled ?? false,
+  };
+}
