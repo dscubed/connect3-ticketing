@@ -20,7 +20,6 @@ import { SettingsModal } from "./toolbox/SettingsModal";
 export function EditorToolbox() {
   const {
     eventId,
-    mode,
     isDark,
     toolbarCollapsed,
     setToolbarCollapsed,
@@ -136,7 +135,7 @@ export function EditorToolbox() {
         </button>
 
         {/* Editor Page Tabs (poking out, centered) */}
-        {eventId && mode !== "create" && (
+        {eventId && (
           <div
             className={cn(
               "absolute -bottom-9.25 left-1/2 -translate-x-1/2 flex items-center p-1 rounded-b-xl border border-t-0 shadow-sm transition-all",

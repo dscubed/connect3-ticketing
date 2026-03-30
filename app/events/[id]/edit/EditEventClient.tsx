@@ -45,5 +45,5 @@ export default function EditEventClient({ eventId }: { eventId: string }) {
 
   if (!data) return null;
 
-  return <EventForm mode="edit" eventId={eventId} data={data} />;
+  return <EventForm eventId={eventId} data={data} />;
 }

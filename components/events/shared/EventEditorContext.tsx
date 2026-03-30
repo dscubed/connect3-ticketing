@@ -1,7 +1,13 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import type { EventTheme, ThemeColors, EventFormData, CarouselImage, ClubProfile } from "./types";
+import type {
+  EventTheme,
+  ThemeColors,
+  EventFormData,
+  CarouselImage,
+  ClubProfile,
+} from "./types";
 import type { FieldGroup } from "@/lib/api/patchEvent";
 import type { CollaboratorPresence } from "@/lib/hooks/useEventRealtime";
 
@@ -10,7 +16,7 @@ import type { CollaboratorPresence } from "@/lib/hooks/useEventRealtime";
 export interface EventEditorContextValue {
   /* ── Identity ── */
   eventId: string | undefined;
-  mode: "create" | "edit";
+  mode: "edit";
   initialUrlSlug: string | null;
 
   /* ── View ── */
@@ -56,7 +62,10 @@ export interface EventEditorContextValue {
   /* ── Form state (accessible by field components) ── */
   form: EventFormData;
   setForm: React.Dispatch<React.SetStateAction<EventFormData>>;
-  updateField: <K extends keyof EventFormData>(key: K, value: EventFormData[K]) => void;
+  updateField: <K extends keyof EventFormData>(
+    key: K,
+    value: EventFormData[K],
+  ) => void;
   carouselImages: CarouselImage[];
   hostsData: ClubProfile[];
   setHostsData: React.Dispatch<React.SetStateAction<ClubProfile[]>>;

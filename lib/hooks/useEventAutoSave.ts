@@ -6,7 +6,6 @@ import type { EventFormData } from "@/components/events/shared/types";
 import type { SectionData } from "@/components/events/sections/types";
 import type { FieldGroup } from "@/lib/api/patchEvent";
 import { patchEvent } from "@/lib/api/patchEvent";
-import { createEvent } from "@/lib/api/createEvent";
 import { useFieldAutoSave } from "./useFieldAutoSave";
 
 interface UseEventAutoSaveOptions {
@@ -14,30 +13,21 @@ interface UseEventAutoSaveOptions {
   formRef: React.RefObject<EventFormData>;
   carouselImagesRef: React.RefObject<CarouselImage[]>;
   sectionsRef: React.RefObject<SectionData[]>;
-  mode: "create" | "edit";
 }
 
 /**
  * Wires up throttled auto-save for the event editor.
- * Creates a draft on first save, then patches subsequent changes.
+ * The draft always exists (created server-side before the editor opens),
+ * so every save is a patch.
  */
 export function useEventAutoSave({
   eventId,
   formRef,
   carouselImagesRef,
   sectionsRef,
-  mode,
 }: UseEventAutoSaveOptions) {
-  const [draftSaved, setDraftSaved] = useState(mode === "edit");
-  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(
-    mode === "edit" ? new Date() : null,
-  );
-
-  const draftSavedRef = useRef(draftSaved);
-
-  useEffect(() => {
-    draftSavedRef.current = draftSaved;
-  }, [draftSaved]);
+  const [draftSaved] = useState(true);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(new Date());
 
   /** Ref that collaboration hook sets to broadcast after saves. */
   const broadcastRef = useRef<(groups: FieldGroup[]) => void>(() => {});
@@ -47,27 +37,14 @@ export function useEventAutoSave({
       const latestForm = formRef.current;
       const latestImages = carouselImagesRef.current;
       const latestSections = sectionsRef.current;
-      const latestDraftSaved = draftSavedRef.current;
       try {
-        if (latestDraftSaved) {
-          await patchEvent(
-            eventId!,
-            dirtyGroups,
-            latestForm,
-            latestImages,
-            latestSections,
-          );
-        } else {
-          await createEvent(
-            eventId!,
-            latestForm,
-            latestImages,
-            latestSections,
-            "draft",
-          );
-          setDraftSaved(true);
-          draftSavedRef.current = true;
-        }
+        await patchEvent(
+          eventId!,
+          dirtyGroups,
+          latestForm,
+          latestImages,
+          latestSections,
+        );
         broadcastRef.current(dirtyGroups);
         setLastSavedAt(new Date());
       } catch (err) {
@@ -105,7 +82,7 @@ export function useEventAutoSave({
     isAutoSaving,
     hasPendingChanges,
     draftSaved,
-    setDraftSaved,
+    setDraftSaved: () => {},
     lastSavedAt,
     setLastSavedAt,
     broadcastRef,

@@ -74,12 +74,10 @@ import type { CollaboratorPresence } from "@/lib/hooks/useEventRealtime";
 import type { FetchedEventData } from "@/lib/api/fetchEvent";
 
 interface EventFormProps {
-  /** Fetched event data (edit mode). All initial state is derived from this. */
+  /** Fetched event data. All initial state is derived from this. */
   data?: FetchedEventData;
-  /** Event ID — required for edit mode */
+  /** Event ID */
   eventId?: string;
-  /** Form mode */
-  mode?: "create" | "edit";
 }
 
 /* ── Sortable wrapper for section-level DnD ── */
@@ -141,7 +139,6 @@ function CollaboratorBadge({
 export default function EventForm({
   data,
   eventId,
-  mode = "create",
 }: EventFormProps) {
   const initialStatus = data?.status ?? "draft";
   const initialTicketingEnabled = data?.ticketingEnabled ?? false;
@@ -202,7 +199,6 @@ export default function EventForm({
     formRef,
     carouselImagesRef,
     sectionsRef,
-    mode,
   });
 
   /* ── Collaboration (hook) ── */
@@ -276,21 +272,25 @@ export default function EventForm({
   );
 
   /* ── Creator profile ── */
-  const creatorProfile: ClubProfile = initialCreatorProfile ?? {
-    id: profile?.id ?? "",
-    first_name: profile?.first_name ?? "You",
-    avatar_url: profile?.avatar_url ?? null,
-  };
+  const creatorProfile: ClubProfile = useMemo(
+    () =>
+      initialCreatorProfile ?? {
+        id: profile?.id ?? "",
+        first_name: profile?.first_name ?? "You",
+        avatar_url: profile?.avatar_url ?? null,
+      },
+    [initialCreatorProfile, profile?.id, profile?.first_name, profile?.avatar_url],
+  );
 
   /* ── Form field update helper ── */
-  const updateField = <K extends keyof EventFormData>(
-    key: K,
-    value: EventFormData[K],
-  ) => {
-    formRef.current = { ...formRef.current, [key]: value };
-    setForm((prev) => ({ ...prev, [key]: value }));
-    markDirty(FIELD_TO_GROUP[key]);
-  };
+  const updateField = useCallback(
+    <K extends keyof EventFormData>(key: K, value: EventFormData[K]) => {
+      formRef.current = { ...formRef.current, [key]: value };
+      setForm((prev) => ({ ...prev, [key]: value }));
+      markDirty(FIELD_TO_GROUP[key]);
+    },
+    [formRef, setForm, markDirty, FIELD_TO_GROUP],
+  );
 
   /* ── Navigation ── */
   const handleBack = useCallback(async () => {
@@ -337,7 +337,7 @@ export default function EventForm({
   const editorContext: EventEditorContextValue = useMemo(
     () => ({
       eventId,
-      mode: eventId ? "edit" : "create",
+      mode: "edit",
       initialUrlSlug,
       previewMode,
       setPreviewMode,

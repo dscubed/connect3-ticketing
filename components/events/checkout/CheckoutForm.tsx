@@ -24,7 +24,7 @@ import { SectionWrapper } from "@/components/events/preview/SectionWrapper";
 import {
   CHECKOUT_PRESET_FIELDS,
 } from "@/lib/types/ticketing";
-import type { ThemeAccent, EventTheme } from "@/components/events/shared/types";
+import type { ThemeAccent, EventTheme, ClubProfile, EventFormData } from "@/components/events/shared/types";
 import {
   getThemeColors,
   getAccentGradient,
@@ -241,10 +241,10 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
 
   /* ── Editor context (only used when mode="edit") ── */
   const editorContext: EventEditorContextValue | null = useMemo(() => {
-    if (mode !== "edit") return null;
+    if (mode !== "edit" || !eventData) return null;
     return {
       eventId,
-      mode: "edit" as const,
+      mode: "edit",
       initialUrlSlug: null,
       previewMode,
       setPreviewMode,
@@ -256,7 +256,7 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
       flush: flushFields,
       isAutoSaving: savingFields,
       lastSavedAt,
-      eventStatus: (eventData?.status ?? "draft") as "draft" | "published" | "archived",
+      eventStatus: (eventData.status ?? "draft") as "draft" | "published" | "archived",
       savingPublish: false,
       draftSaved: true,
       ticketingEnabled,
@@ -271,7 +271,14 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
       setThemeOpen: () => {},
       colors,
       isDark,
-      hasName: !!eventData?.formData.name,
+      hasName: !!eventData.formData.name,
+      form: eventData.formData as EventFormData,
+      setForm: () => {},
+      updateField: () => {},
+      carouselImages: eventData.carouselImages ?? [],
+      hostsData: [],
+      setHostsData: () => {},
+      creatorProfile: (profile ?? {}) as ClubProfile,
       collaborators,
       getFieldLock: () => ({ locked: false }),
       handleFieldFocus: () => {},
@@ -293,8 +300,10 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
     theme,
     colors,
     isDark,
-    eventData?.formData.name,
+    eventData?.formData,
     eventData?.status,
+    eventData?.carouselImages,
+    profile,
     collaborators,
   ]);
 
