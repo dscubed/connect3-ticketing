@@ -45,12 +45,12 @@ interface CollabInvite {
   events: {
     id: string;
     name: string | null;
-    thumbnail: string | null;
     start: string | null;
     end: string | null;
     is_online: boolean;
     category: string | null;
     status: string;
+    event_images: { url: string; sort_order: number }[] | null;
   } | null;
   inviter: ProfileSnippet | null;
 }
@@ -318,10 +318,10 @@ export function NotificationsFeed({ mode }: NotificationsFeedProps) {
         return (
           <Card key={`collab-${invite.id}`} className="overflow-hidden">
             <div className="flex gap-3 p-4">
-              {event.thumbnail && (
+              {(event.event_images as {url:string; sort_order:number}[] | undefined)?.[0]?.url && (
                 <div className="h-16 w-24 shrink-0 overflow-hidden rounded-md">
                   <Image
-                    src={event.thumbnail}
+                    src={(event.event_images as {url:string; sort_order:number}[])[0].url}
                     alt={event.name ?? "Event"}
                     width={96}
                     height={64}

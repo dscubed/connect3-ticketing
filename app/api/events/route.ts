@@ -75,17 +75,21 @@ async function transformToEventCardDetails(
   const profile = event.profiles as unknown as AvatarProfile;
 
   // Supabase FK join: location is returned as a single object for to-one relations
-  const location = event.event_locations as unknown as { venue: string } | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const images: { url: string; sort_order: number }[] = (event.event_images ?? []).sort((a: any, b: any) => a.sort_order - b.sort_order);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const venues: { type: string; venue: string | null; sort_order: number }[] = (event.event_venues ?? []).sort((a: any, b: any) => a.sort_order - b.sort_order);
+  const primaryVenue = venues.find((v) => v.type !== "tba") ?? venues[0];
 
   return {
     id: event.id,
     name: event.name,
     start: event.start,
-    thumbnail: event.thumbnail,
+    thumbnail: images[0]?.url ?? null,
     is_online: event.is_online,
     status: event.status,
     category: event.category,
-    location_name: location?.venue ?? null,
+    location_name: primaryVenue?.venue ?? null,
     host: {
       id: profile.id,
       first_name: profile.first_name,
@@ -152,7 +156,7 @@ export async function GET(request: NextRequest) {
       const { data, error } = await supabaseAdmin
         .from("events")
         .select(
-          "id, name, start, thumbnail, is_online, category, status, profiles!creator_profile_id(id, first_name, avatar_url), event_locations(venue)",
+          "id, name, start, is_online, category, status, profiles!creator_profile_id(id, first_name, avatar_url), event_venues(type, venue, sort_order), event_images(url, sort_order)",
         )
         .in("id", recentIds);
 
@@ -236,7 +240,7 @@ export async function GET(request: NextRequest) {
         const { data, error } = await supabaseAdmin
           .from("events")
           .select(
-            "id, name, start, thumbnail, is_online, category, status, profiles!creator_profile_id(id, first_name, avatar_url), event_locations(venue)",
+            "id, name, start, is_online, category, status, profiles!creator_profile_id(id, first_name, avatar_url), event_venues(type, venue, sort_order), event_images(url, sort_order)",
           )
           .in("id", recentIds)
           .or(clubEventFilter);
@@ -280,7 +284,7 @@ export async function GET(request: NextRequest) {
         const { data, error } = await supabaseAdmin
           .from("events")
           .select(
-            "id, name, start, thumbnail, is_online, category, status, profiles!creator_profile_id(id, first_name, avatar_url), event_locations(venue)",
+            "id, name, start, is_online, category, status, profiles!creator_profile_id(id, first_name, avatar_url), event_venues(type, venue, sort_order), event_images(url, sort_order)",
           )
           .in("id", requestedIds)
           .or(clubEventFilter);
@@ -307,7 +311,7 @@ export async function GET(request: NextRequest) {
       let query = supabaseAdmin
         .from("events")
         .select(
-          "id, name, start, thumbnail, is_online, category, status, created_at, profiles!creator_profile_id(id, first_name, avatar_url), event_locations(venue)",
+          "id, name, start, is_online, category, status, created_at, profiles!creator_profile_id(id, first_name, avatar_url), event_venues(type, venue, sort_order), event_images(url, sort_order)",
         )
         .or(
           collabEventIds.length > 0
@@ -355,7 +359,7 @@ export async function GET(request: NextRequest) {
     let query = supabaseAdmin
       .from("events")
       .select(
-        "id, name, start, thumbnail, is_online, category, status, created_at, profiles!creator_profile_id(id, first_name, avatar_url), event_locations(venue)",
+        "id, name, start, is_online, category, status, created_at, profiles!creator_profile_id(id, first_name, avatar_url), event_venues(type, venue, sort_order), event_images(url, sort_order)",
       )
       .or(
         collabEventIds.length > 0
@@ -476,22 +480,7 @@ export async function POST(request: NextRequest) {
     const startTs = buildUtcTimestamp(startDate, startTime, timezone);
     const endTs = buildUtcTimestamp(endDate, endTime, timezone);
 
-    /* ── Insert location ── */
-    let locationId: string | null = null;
-    if (location?.displayName && (locationType === "physical" || locationType === "custom")) {
-      const { data: loc, error: locErr } = await supabaseAdmin
-        .from("event_locations")
-        .insert({
-          venue: location.displayName,
-          address: location.address || null,
-          latitude: locationType === "physical" ? (location.lat ?? null) : null,
-          longitude: locationType === "physical" ? (location.lon ?? null) : null,
-        })
-        .select("id")
-        .single();
-      if (locErr) throw new Error(`Location insert failed: ${locErr.message}`);
-      locationId = loc.id;
-    }
+    /* ── Location will be inserted into event_venues after event creation ── */
 
     /* ── Determine the creator_profile_id ──
        If club_id is provided, verify the user is a club admin and
@@ -511,7 +500,6 @@ export async function POST(request: NextRequest) {
     }
 
     /* ── Insert event row ── */
-    const thumbnail = imageUrls[0] ?? null;
     const { error: eventErr } = await supabaseAdmin.from("events").insert({
       id: eventId,
       name,
@@ -526,8 +514,6 @@ export async function POST(request: NextRequest) {
       location_type: locationType,
       online_link: locationType === "online" ? onlineLink : null,
       is_recurring: isRecurring,
-      thumbnail,
-      location_id: locationId,
       category,
       tags,
       timezone,
@@ -535,6 +521,32 @@ export async function POST(request: NextRequest) {
       source: "connect3",
     });
     if (eventErr) throw new Error(`Event insert failed: ${eventErr.message}`);
+
+    /* ── Insert venue into event_venues ── */
+    if (location?.displayName && (locationType === "physical" || locationType === "custom")) {
+      await supabaseAdmin.from("event_venues").insert({
+        event_id: eventId,
+        type: locationType,
+        venue: location.displayName,
+        address: location.address || null,
+        latitude: locationType === "physical" ? (location.lat ?? null) : null,
+        longitude: locationType === "physical" ? (location.lon ?? null) : null,
+        sort_order: 0,
+      });
+    } else if (locationType === "online") {
+      await supabaseAdmin.from("event_venues").insert({
+        event_id: eventId,
+        type: "online",
+        online_link: onlineLink,
+        sort_order: 0,
+      });
+    } else {
+      await supabaseAdmin.from("event_venues").insert({
+        event_id: eventId,
+        type: "tba",
+        sort_order: 0,
+      });
+    }
 
     /* ── Insert carousel images ── */
     if (imageUrls.length > 0) {

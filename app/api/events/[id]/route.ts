@@ -29,6 +29,21 @@ interface LocationPayload {
   lat?: number;
   lon?: number;
 }
+interface VenuePayload {
+  id: string;
+  type: "physical" | "custom" | "online" | "tba";
+  location: LocationPayload;
+  onlineLink?: string;
+}
+interface OccurrencePayload {
+  id?: string;
+  name?: string;
+  startDate: string;
+  startTime: string;
+  endDate: string;
+  endTime: string;
+  venueIds?: string[];
+}
 interface SectionPayload {
   type: string;
   data: unknown;
@@ -45,16 +60,10 @@ export async function GET(
   try {
     const { id } = await params;
 
-    /* Event row + location + pricing */
+    /* Event row */
     const { data: event, error } = await supabaseAdmin
       .from("events")
-      .select(
-        `
-        *,
-        event_locations (*),
-        event_pricings (*)
-      `,
-      )
+      .select("*")
       .eq("id", id)
       .single();
 
@@ -63,7 +72,7 @@ export async function GET(
     }
 
     /* Related tables in parallel */
-    const [images, hosts, tiers, links, sections, occurrences] =
+    const [images, hosts, tiers, links, sections, occurrences, venues] =
       await Promise.all([
         supabaseAdmin
           .from("event_images")
@@ -97,6 +106,11 @@ export async function GET(
           .select("*")
           .eq("event_id", id)
           .order("start"),
+        supabaseAdmin
+          .from("event_venues")
+          .select("*")
+          .eq("event_id", id)
+          .order("sort_order"),
       ]);
 
     /* Theme and ticketing come directly from the events row */
@@ -118,6 +132,8 @@ export async function GET(
         theme,
         sections: sections.data ?? [],
         occurrences: occurrences.data ?? [],
+        venues: venues.data ?? [],
+        thumbnail: (images.data ?? [])[0]?.url ?? null,
         ticketing: { enabled: event.ticketing_enabled ?? false },
       },
     });
@@ -185,7 +201,7 @@ export async function PUT(
     const imageUrls: string[] = body.imageUrls ?? [];
     const sections: SectionPayload[] = body.sections ?? [];
     const eventStatus: string | undefined = body.status;
-    const occurrences: { startDate: string; startTime: string; endDate: string; endTime: string }[] = body.occurrences ?? [];
+    const occurrences: OccurrencePayload[] = body.occurrences ?? [];
 
     const eventCapacityInput: number | null = body.eventCapacity ?? null;
     let eventCapacity = eventCapacityInput;
@@ -254,44 +270,7 @@ export async function PUT(
       }
     }
 
-    /* ── Upsert location ── */
-    let locationId: string | null = null;
-    if (location?.displayName && (locationType === "physical" || locationType === "custom")) {
-      const { data: oldEvent } = await supabaseAdmin
-        .from("events")
-        .select("location_id")
-        .eq("id", eventId)
-        .single();
-
-      const locPayload = {
-        venue: location.displayName,
-        address: location.address || null,
-        latitude: locationType === "physical" ? (location.lat ?? null) : null,
-        longitude: locationType === "physical" ? (location.lon ?? null) : null,
-      };
-
-      if (oldEvent?.location_id) {
-        const { error: locErr } = await supabaseAdmin
-          .from("event_locations")
-          .update(locPayload)
-          .eq("id", oldEvent.location_id);
-        if (!locErr) locationId = oldEvent.location_id;
-      }
-
-      if (!locationId) {
-        const { data: loc, error: locErr } = await supabaseAdmin
-          .from("event_locations")
-          .insert(locPayload)
-          .select("id")
-          .single();
-        if (locErr)
-          throw new Error(`Location insert failed: ${locErr.message}`);
-        locationId = loc.id;
-      }
-    }
-
     /* ── Update event row ── */
-    const thumbnail = imageUrls[0] ?? null;
     const updatePayload: Record<string, unknown> = {
       name,
       description,
@@ -301,8 +280,6 @@ export async function PUT(
       location_type: locationType,
       online_link: locationType === "online" ? onlineLink : null,
       is_recurring: isRecurring,
-      thumbnail,
-      location_id: locationId,
       category,
       tags,
       timezone,
@@ -405,8 +382,10 @@ export async function PUT(
     if (occurrences.length > 0) {
       const occRows = occurrences.map((o) => ({
         event_id: eventId,
+        name: o.name ?? null,
         start: buildUtcTimestamp(o.startDate, o.startTime, timezone),
         end: buildUtcTimestamp(o.endDate, o.endTime, timezone),
+        venue_ids: o.venueIds ?? [],
       }));
       await supabaseAdmin.from("event_occurrences").insert(occRows);
     }
@@ -534,52 +513,79 @@ export async function PATCH(
 
     /* ── location ── */
     if (groups.includes("location")) {
-      const location: LocationPayload | null = body.location ?? null;
       const locationType: string = body.locationType ?? "tba";
       const onlineLink: string | null = body.onlineLink || null;
-      let locationId: string | null = null;
+      const venues: VenuePayload[] = body.venues ?? [];
 
-      // Physical and custom locations use event_locations table
-      if (location?.displayName && (locationType === "physical" || locationType === "custom")) {
-        const locPayload = {
-          venue: location.displayName,
-          address: location.address || null,
-          latitude: locationType === "physical" ? (location.lat ?? null) : null,
-          longitude: locationType === "physical" ? (location.lon ?? null) : null,
-        };
-        if (existing.location_id) {
-          const { error: locErr } = await supabaseAdmin
-            .from("event_locations")
-            .update(locPayload)
-            .eq("id", existing.location_id);
-          if (!locErr) locationId = existing.location_id;
-        }
-        if (!locationId) {
-          const { data: loc, error: locErr } = await supabaseAdmin
-            .from("event_locations")
-            .insert(locPayload)
-            .select("id")
-            .single();
-          if (locErr)
-            throw new Error(`Location insert failed: ${locErr.message}`);
-          locationId = loc.id;
-        }
-      }
       await supabaseAdmin
         .from("events")
         .update({
-          location_id: locationId,
           location_type: locationType,
           online_link: locationType === "online" ? onlineLink : null,
           is_online: locationType === "online",
         })
         .eq("id", eventId);
+
+      // Upsert event_venues
+      if (venues.length > 0) {
+        // Get existing DB venue IDs for this event (to know which are new vs existing)
+        const { data: existingVenues } = await supabaseAdmin
+          .from("event_venues")
+          .select("id")
+          .eq("event_id", eventId);
+        const existingIds = new Set((existingVenues ?? []).map((v) => v.id));
+
+        // Separate new (nanoid) vs existing (UUID) venues
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const toInsert = venues.filter((v) => !uuidRegex.test(v.id) || !existingIds.has(v.id));
+        const toUpdate = venues.filter((v) => uuidRegex.test(v.id) && existingIds.has(v.id));
+
+        // Delete venues no longer present
+        const keepIds = venues.filter((v) => uuidRegex.test(v.id)).map((v) => v.id);
+        if (keepIds.length > 0) {
+          await supabaseAdmin
+            .from("event_venues")
+            .delete()
+            .eq("event_id", eventId)
+            .not("id", "in", `(${keepIds.map((id) => `'${id}'`).join(",")})`);
+        } else {
+          await supabaseAdmin.from("event_venues").delete().eq("event_id", eventId);
+        }
+
+        if (toInsert.length > 0) {
+          const rows = toInsert.map((v, i) => ({
+            event_id: eventId,
+            type: v.type,
+            venue: v.location.displayName || null,
+            address: v.location.address || null,
+            latitude: v.type === "physical" ? (v.location.lat ?? null) : null,
+            longitude: v.type === "physical" ? (v.location.lon ?? null) : null,
+            online_link: v.type === "online" ? (v.onlineLink ?? null) : null,
+            sort_order: i,
+          }));
+          await supabaseAdmin.from("event_venues").insert(rows);
+        }
+
+        for (const v of toUpdate) {
+          const idx = venues.indexOf(v);
+          await supabaseAdmin.from("event_venues").update({
+            type: v.type,
+            venue: v.location.displayName || null,
+            address: v.location.address || null,
+            latitude: v.type === "physical" ? (v.location.lat ?? null) : null,
+            longitude: v.type === "physical" ? (v.location.lon ?? null) : null,
+            online_link: v.type === "online" ? (v.onlineLink ?? null) : null,
+            sort_order: idx,
+          }).eq("id", v.id);
+        }
+      }
+
       updatedGroups.push("location");
     }
 
     /* ── occurrences ── */
     if (groups.includes("occurrences")) {
-      const occurrences: { startDate: string; startTime: string; endDate: string; endTime: string }[] = body.occurrences ?? [];
+      const occurrences: OccurrencePayload[] = body.occurrences ?? [];
       const occTimezone: string | null = body.timezone ?? null;
 
       // Delete existing occurrences
@@ -592,8 +598,10 @@ export async function PATCH(
       if (occurrences.length > 0) {
         const rows = occurrences.map((o) => ({
           event_id: eventId,
+          name: o.name ?? null,
           start: buildUtcTimestamp(o.startDate, o.startTime, occTimezone),
           end: buildUtcTimestamp(o.endDate, o.endTime, occTimezone),
+          venue_ids: o.venueIds ?? [],
         }));
         await supabaseAdmin.from("event_occurrences").insert(rows);
       }
@@ -631,11 +639,6 @@ export async function PATCH(
         }));
         await supabaseAdmin.from("event_images").insert(rows);
       }
-      /* Update thumbnail on event row */
-      await supabaseAdmin
-        .from("events")
-        .update({ thumbnail: imageUrls[0] ?? null })
-        .eq("id", eventId);
       updatedGroups.push("images");
     }
 

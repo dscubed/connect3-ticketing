@@ -67,19 +67,23 @@ interface RawSection {
   sort_order: number;
 }
 
-interface RawLocation {
-  id: string;
-  venue: string | null;
-  address: string | null;
-  latitude: number | null;
-  longitude: number | null;
-}
-
 interface RawOccurrence {
   id: string;
   name: string | null;
   start: string;
   end: string | null;
+  venue_ids: string[] | null;
+}
+
+interface RawVenue {
+  id: string;
+  type: string;
+  venue: string | null;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  online_link: string | null;
+  sort_order: number;
 }
 
 interface RawEvent {
@@ -99,7 +103,6 @@ interface RawEvent {
   url_slug: string | null;
   creator_profile_id: string;
   event_capacity: number | null;
-  event_locations: RawLocation | null;
   images: RawImage[];
   hosts: RawHost[];
   ticket_tiers: RawTicketTier[];
@@ -107,6 +110,7 @@ interface RawEvent {
   theme: RawTheme | null;
   sections: RawSection[];
   occurrences: RawOccurrence[];
+  venues: RawVenue[];
   ticketing: { enabled: boolean } | null;
 }
 
@@ -155,38 +159,33 @@ export async function fetchEvent(eventId: string): Promise<FetchedEventData> {
     endTime = parts.time;
   }
 
-  /* ── Location ── */
-  const loc = data.event_locations;
-  const location: LocationData = {
-    displayName: loc?.venue ?? "",
-    address: loc?.address ?? "",
-    lat: loc?.latitude ?? undefined,
-    lon: loc?.longitude ?? undefined,
-  };
+  /* ── Location type ── */
+  const locationType: LocationType = (data.location_type as LocationType) ?? "tba";
 
-  /* ── Location type (derive from is_online + location_id if column is null) ── */
-  let locationType: LocationType = (data.location_type as LocationType) ?? "tba";
-  if (!data.location_type) {
-    if (data.is_online) locationType = "online";
-    else if (data.event_locations) locationType = "physical";
-    else locationType = "tba";
-  }
-
-  /* ── Venues (derive from legacy single-location for backward compat) ── */
-  const venues: Venue[] = [];
-  if (locationType === "online") {
-    venues.push({
-      id: loc?.id ?? "venue-online",
-      type: "online",
-      location: { displayName: "", address: "" },
-      onlineLink: data.online_link ?? "",
-    });
-  } else if (locationType !== "tba" && location.displayName) {
-    venues.push({
-      id: loc?.id ?? "venue-primary",
-      type: locationType,
-      location,
-    });
+  /* ── Venues (from event_venues table, with legacy fallback) ── */
+  let venues: Venue[] = [];
+  if (data.venues && data.venues.length > 0) {
+    venues = data.venues.map((v) => ({
+      id: v.id,
+      type: v.type as LocationType,
+      location: {
+        displayName: v.venue ?? "",
+        address: v.address ?? "",
+        lat: v.latitude ?? undefined,
+        lon: v.longitude ?? undefined,
+      },
+      onlineLink: v.online_link ?? undefined,
+    }));
+  } else {
+    // Legacy fallback: derive from location_type and online_link on the event row
+    if (locationType === "online") {
+      venues.push({
+        id: "venue-online",
+        type: "online",
+        location: { displayName: "", address: "" },
+        onlineLink: data.online_link ?? "",
+      });
+    }
   }
 
   /* ── Occurrences ── */
@@ -202,6 +201,7 @@ export async function fetchEvent(eventId: string): Promise<FetchedEventData> {
       startTime: s.time,
       endDate: e.date,
       endTime: e.time,
+      venueIds: o.venue_ids ?? [],
     };
   });
 
@@ -311,6 +311,15 @@ export async function fetchEvent(eventId: string): Promise<FetchedEventData> {
     type: s.type,
     ...(s.data as object),
   })) as SectionData[];
+
+  /* ── Primary location (derived from first non-TBA venue for legacy compat) ── */
+  const primaryVenue = venues.find((v) => v.type !== "tba") ?? venues[0];
+  const location: LocationData = {
+    displayName: primaryVenue?.location.displayName ?? "",
+    address: primaryVenue?.location.address ?? "",
+    lat: primaryVenue?.location.lat,
+    lon: primaryVenue?.location.lon,
+  };
 
   /* ── Assemble form data ── */
   const formData: Partial<EventFormData> = {

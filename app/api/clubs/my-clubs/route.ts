@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
       const { data: events } = await supabaseAdmin
         .from("events")
         .select(
-          "id, name, thumbnail, start, end, status, category, is_online, created_at, creator_profile_id",
+          "id, name, start, end, status, category, is_online, created_at, creator_profile_id, event_images(url, sort_order)",
         )
         .in("creator_profile_id", clubIds)
         .order("created_at", { ascending: false });

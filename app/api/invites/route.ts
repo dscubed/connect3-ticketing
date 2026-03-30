@@ -26,7 +26,7 @@ export async function GET(request: Request) {
       .from("event_hosts")
       .select(
         `id, event_id, inviter_id, status, sort_order,
-         events:event_id(id, name, thumbnail, start, end, is_online, category, status),
+         events:event_id(id, name, start, end, is_online, category, status, event_images(url, sort_order)),
          inviter:inviter_id(id, first_name, last_name, avatar_url)`,
       )
       .eq("profile_id", user.id)

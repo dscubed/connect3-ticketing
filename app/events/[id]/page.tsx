@@ -48,7 +48,7 @@ export async function generateMetadata({
     event.description?.slice(0, 160) ||
     "Check out this event on Connect3 — the all-in-one ticketing solution for clubs.";
   const ogImage =
-    event.images[0]?.url ?? event.thumbnail ?? `${SITE_URL}/og-default.png`;
+    event.images[0]?.url ?? `${SITE_URL}/og-default.png`;
 
   const startDate = event.start
     ? new Date(event.start).toISOString()
@@ -80,8 +80,8 @@ export async function generateMetadata({
     other: {
       ...(startDate ? { "event:start_time": startDate } : {}),
       ...(endDate ? { "event:end_time": endDate } : {}),
-      ...(event.location?.venue
-        ? { "event:location": event.location.venue }
+      ...(event.venues?.[0]?.venue
+        ? { "event:location": event.venues[0].venue }
         : {}),
     },
   };
@@ -107,31 +107,16 @@ function EventJsonLd({
     eventAttendanceMode: event.is_online
       ? "https://schema.org/OnlineEventAttendanceMode"
       : "https://schema.org/OfflineEventAttendanceMode",
-    ...(event.location && !event.is_online
-      ? {
-          location: {
-            "@type": "Place",
-            name: event.location.venue ?? undefined,
-            address: event.location.address ?? undefined,
-            ...(event.location.latitude && event.location.longitude
-              ? {
-                  geo: {
-                    "@type": "GeoCoordinates",
-                    latitude: event.location.latitude,
-                    longitude: event.location.longitude,
-                  },
-                }
-              : {}),
-          },
-        }
-      : event.is_online
-        ? {
-            location: {
-              "@type": "VirtualLocation",
-              url: `${SITE_URL}/events/${event.id}`,
-            },
-          }
-        : {}),
+    ...(() => {
+      const v = event.venues?.find((x) => x.type !== "tba");
+      if (v && !event.is_online) {
+        return { location: { "@type": "Place", name: v.venue ?? undefined, address: v.address ?? undefined, ...(v.latitude && v.longitude ? { geo: { "@type": "GeoCoordinates", latitude: v.latitude, longitude: v.longitude } } : {}) } };
+      }
+      if (event.is_online) {
+        return { location: { "@type": "VirtualLocation", url: `${SITE_URL}/events/${event.id}` } };
+      }
+      return {};
+    })(),
     ...(event.images[0]?.url ? { image: event.images[0].url } : {}),
     organizer: event.creator_profile
       ? {

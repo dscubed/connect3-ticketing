@@ -34,12 +34,16 @@ export interface PublicEventData {
   thumbnail: string | null;
   event_capacity: number | null;
   creator_profile_id: string;
-  location: {
+  venues: {
+    id: string;
+    type: string;
     venue: string | null;
     address: string | null;
     latitude: number | null;
     longitude: number | null;
-  } | null;
+    online_link: string | null;
+    sort_order: number;
+  }[];
   images: { id: string; url: string; sort_order: number }[];
   hosts: {
     profile_id: string;
@@ -93,7 +97,7 @@ export async function fetchEventServer(
 ): Promise<PublicEventData | null> {
   let query = supabaseAdmin
     .from("events")
-    .select("*, event_locations(*)")
+    .select("*, event_venues(*)")
     .or(`id.eq.${eventId},url_slug.eq.${eventId}`);
 
   if (requirePublished) {
@@ -146,8 +150,6 @@ export async function fetchEventServer(
       .single(),
   ]);
 
-  const loc = event.event_locations;
-
   /* Theme comes directly from the events row */
   const theme =
     event.theme_mode != null
@@ -171,17 +173,10 @@ export async function fetchEventServer(
     category: event.category,
     tags: event.tags,
     status: event.status,
-    thumbnail: event.thumbnail,
+    thumbnail: (images.data ?? [])[0]?.url ?? null,
     event_capacity: event.event_capacity,
     creator_profile_id: event.creator_profile_id,
-    location: loc
-      ? {
-          venue: loc.venue,
-          address: loc.address,
-          latitude: loc.latitude,
-          longitude: loc.longitude,
-        }
-      : null,
+    venues: (event.event_venues ?? []) as PublicEventData["venues"],
     images: images.data ?? [],
     hosts: (hosts.data ?? []) as unknown as PublicEventData["hosts"],
     ticket_tiers: tiers.data ?? [],
@@ -325,30 +320,35 @@ export function publicToFetchedData(event: PublicEventData): FetchedEventData {
     ? splitUtcTimestampInTimeZone(event.end, tz)
     : null;
 
+  const sortedVenues = [...(event.venues ?? [])].sort((a, b) => a.sort_order - b.sort_order);
+  const primaryVenue = sortedVenues.find((v) => v.type !== "tba") ?? sortedVenues[0];
+
   const locationType: LocationType = event.is_online
     ? "online"
-    : event.location
-      ? "physical"
+    : primaryVenue && primaryVenue.type !== "tba"
+      ? (primaryVenue.type as LocationType)
       : "tba";
 
   const location: LocationData = {
-    displayName: event.location?.venue ?? "",
-    address: event.location?.address ?? "",
-    lat: event.location?.latitude ?? undefined,
-    lon: event.location?.longitude ?? undefined,
+    displayName: primaryVenue?.venue ?? "",
+    address: primaryVenue?.address ?? "",
+    lat: primaryVenue?.latitude ?? undefined,
+    lon: primaryVenue?.longitude ?? undefined,
   };
 
-  const venues: Venue[] = [];
-  if (locationType === "online") {
-    venues.push({
-      id: "venue-online",
-      type: "online",
-      location: { displayName: "", address: "" },
-      onlineLink: "",
-    });
-  } else if (locationType !== "tba" && location.displayName) {
-    venues.push({ id: "venue-primary", type: locationType, location });
-  }
+  const venues: Venue[] = sortedVenues.length > 0
+    ? sortedVenues.map((v) => ({
+        id: v.id,
+        type: v.type as LocationType,
+        location: {
+          displayName: v.venue ?? "",
+          address: v.address ?? "",
+          lat: v.latitude ?? undefined,
+          lon: v.longitude ?? undefined,
+        },
+        onlineLink: v.online_link ?? undefined,
+      }))
+    : [];
 
   const occurrences = startParts
     ? [
