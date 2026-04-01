@@ -345,6 +345,7 @@ export function CreateEventModal({
   >({});
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [easyImporting, setEasyImporting] = useState(false);
   const [selectedPost, setSelectedPost] = useState<InstagramPost | null>(null);
   const [importedIds, setImportedIds] = useState<Set<string>>(new Set());
 
@@ -370,6 +371,7 @@ export function CreateEventModal({
       setSlugToProfile({});
       setSelectedPost(null);
       setImporting(false);
+      setEasyImporting(false);
       setImportedIds(new Set());
     }
   }, [open]);
@@ -461,6 +463,56 @@ export function CreateEventModal({
       console.error("Import failed:", err);
     } finally {
       setImporting(false);
+    }
+  };
+
+  /* Easy import: LLM-assisted extraction + import */
+  const handleEasyImport = async () => {
+    if (!selectedPost || easyImporting) return;
+    setEasyImporting(true);
+
+    try {
+      const res = await fetch("/api/media/instagram/posts/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          postId: selectedPost.id,
+          easyImport: true,
+          clientTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          ...(clubId ? { clubId } : {}),
+        }),
+      });
+
+      const json = await res.json();
+
+      if (res.status === 409 && json.eventId) {
+        toast.info("This post has already been imported.");
+        onOpenChange(false);
+        router.push(`/events/${json.eventId}/edit`);
+        return;
+      }
+
+      if (!res.ok) throw new Error(json.error ?? "Easy import failed");
+
+      const { eventId, collaboratorProfiles } = json;
+
+      onOpenChange(false);
+
+      if (collaboratorProfiles && collaboratorProfiles.length > 0) {
+        setCollabAlert({
+          open: true,
+          profiles: collaboratorProfiles,
+          eventId,
+        });
+      } else {
+        toast.success("Easy import applied. Review the details.");
+        router.push(`/events/${eventId}/edit`);
+      }
+    } catch (err) {
+      console.error("Easy import failed:", err);
+      toast.error("Easy import failed");
+    } finally {
+      setEasyImporting(false);
     }
   };
 
@@ -622,14 +674,30 @@ export function CreateEventModal({
                     ` · ${selectedCollabs.length} collaborator${selectedCollabs.length !== 1 ? "s" : ""}`}
                 </p>
               </div>
-              <Button
-                onClick={handleImport}
-                disabled={importing}
-                className="shrink-0"
-              >
-                {importing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Import Post
-              </Button>
+              <div className="relative shrink-0 group pt-11 -mt-11">
+                <Button
+                  onClick={handleEasyImport}
+                  disabled={easyImporting || importing}
+                  size="sm"
+                  variant="secondary"
+                  className="absolute top-0 right-0 z-10 opacity-0 translate-y-1 pointer-events-none transition-all duration-150 group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:translate-y-0 group-focus-within:pointer-events-auto"
+                >
+                  {easyImporting && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  Easy Import
+                </Button>
+                <Button
+                  onClick={handleImport}
+                  disabled={importing || easyImporting}
+                  className="shrink-0"
+                >
+                  {importing && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  Import Post
+                </Button>
+              </div>
             </div>
           )}
         </ResponsiveModal>

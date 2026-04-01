@@ -2,8 +2,180 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { resolveManagedProfileId } from "@/lib/auth/clubAdmin";
+import { buildUtcTimestamp } from "@/lib/utils/timezone";
 
 const BUCKET = "media";
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+
+const EVENT_CATEGORIES = [
+  "Social",
+  "Academic",
+  "Sports",
+  "Music",
+  "Arts & Culture",
+  "Networking",
+  "Workshop",
+  "Fundraiser",
+  "Other",
+] as const;
+
+type EventCategory = (typeof EVENT_CATEGORIES)[number];
+
+type EasyImportResult = {
+  name: string | null;
+  start_date: string | null;
+  start_time: string | null;
+  end_date: string | null;
+  end_time: string | null;
+  timezone: string | null;
+  location_type: "physical" | "custom" | "online" | "tba" | null;
+  location_name: string | null;
+  location_address: string | null;
+  online_link: string | null;
+  category: EventCategory | null;
+};
+
+function isValidDate(value: string | null) {
+  if (!value) return false;
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function isValidTime(value: string | null) {
+  if (!value) return false;
+  return /^\d{2}:\d{2}$/.test(value);
+}
+
+function normalizeString(value: string | null) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function normalizeCategory(value: string | null): EventCategory | null {
+  if (!value) return null;
+  return EVENT_CATEGORIES.includes(value as EventCategory)
+    ? (value as EventCategory)
+    : null;
+}
+
+function getValidatedTimeZone(timeZone?: string | null) {
+  if (!timeZone) return null;
+  try {
+    Intl.DateTimeFormat("en-US", { timeZone });
+    return timeZone;
+  } catch {
+    return null;
+  }
+}
+
+async function extractEasyImportDetails({
+  caption,
+  location,
+}: {
+  caption: string;
+  location: string | null;
+}): Promise<EasyImportResult | null> {
+  if (!OPENAI_API_KEY) return null;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const prompt = [
+    "Extract event details from the Instagram caption below.",
+    "Return only JSON that matches the provided schema.",
+    "Use null when information is missing or uncertain.",
+    "Extract a short event name (3-8 words) if possible; avoid emojis and trailing punctuation.",
+    "Dates must be YYYY-MM-DD. Times must be 24h HH:MM.",
+    "If a date is given without a year, infer the next occurrence after today; otherwise return null.",
+    "If end_time is present but end_date is missing, set end_date to start_date.",
+    "Only include a timezone if it is explicitly mentioned; use IANA names (e.g. Australia/Melbourne).",
+    "If an online meeting link is present, set location_type to online and include online_link.",
+    "Choose a category from this list or return null: " +
+      EVENT_CATEGORIES.join(", "),
+    "",
+    `Today: ${today}`,
+    "",
+    `Caption: ${caption || "(empty)"}`,
+    location ? `Instagram location field: ${location}` : "Instagram location field: (none)",
+  ].join("\n");
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-5-mini",
+      temperature: 1,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a precise information extraction assistant. Return only JSON.",
+        },
+        { role: "user", content: prompt },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "event_easy_import",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              name: { type: ["string", "null"] },
+              start_date: { type: ["string", "null"] },
+              start_time: { type: ["string", "null"] },
+              end_date: { type: ["string", "null"] },
+              end_time: { type: ["string", "null"] },
+              timezone: { type: ["string", "null"] },
+              location_type: {
+                type: ["string", "null"],
+                enum: ["physical", "custom", "online", "tba", null],
+              },
+              location_name: { type: ["string", "null"] },
+              location_address: { type: ["string", "null"] },
+              online_link: { type: ["string", "null"] },
+              category: {
+                type: ["string", "null"],
+                enum: [...EVENT_CATEGORIES, null],
+              },
+            },
+            required: [
+              "name",
+              "start_date",
+              "start_time",
+              "end_date",
+              "end_time",
+              "timezone",
+              "location_type",
+              "location_name",
+              "location_address",
+              "online_link",
+              "category",
+            ],
+          },
+        },
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    console.warn("Easy import extraction failed:", err);
+    return null;
+  }
+
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) return null;
+
+  try {
+    return JSON.parse(content) as EasyImportResult;
+  } catch (err) {
+    console.warn("Easy import JSON parse failed:", err);
+    return null;
+  }
+}
 
 /**
  * POST /api/media/instagram/posts/import
@@ -30,6 +202,9 @@ export async function POST(request: NextRequest) {
     /* ── Parse body ── */
     const body = await request.json();
     const postId: string | undefined = body.postId;
+    const easyImport: boolean = body.easyImport === true;
+    const clientTimezone =
+      typeof body.clientTimezone === "string" ? body.clientTimezone : undefined;
     const requestedClubId =
       typeof body.clubId === "string" ? body.clubId : undefined;
     if (!postId) {
@@ -77,6 +252,97 @@ export async function POST(request: NextRequest) {
         { status: 404 },
       );
     }
+
+    /* ── Optional LLM extraction ── */
+    let easyImportDetails: EasyImportResult | null = null;
+    if (easyImport) {
+      try {
+        easyImportDetails = await extractEasyImportDetails({
+          caption: post.caption ?? "",
+          location: post.location ?? null,
+        });
+      } catch (err) {
+        console.warn("Easy import extraction error:", err);
+      }
+    }
+
+    const normalizedTimezone = getValidatedTimeZone(
+      normalizeString(easyImportDetails?.timezone ?? null),
+    );
+    const resolvedTimezone =
+      normalizedTimezone ?? getValidatedTimeZone(clientTimezone ?? null);
+
+    const startDate = isValidDate(easyImportDetails?.start_date ?? null)
+      ? easyImportDetails?.start_date ?? null
+      : null;
+    const startTime = isValidTime(easyImportDetails?.start_time ?? null)
+      ? easyImportDetails?.start_time ?? null
+      : null;
+    let endDate = isValidDate(easyImportDetails?.end_date ?? null)
+      ? easyImportDetails?.end_date ?? null
+      : null;
+    const endTime = isValidTime(easyImportDetails?.end_time ?? null)
+      ? easyImportDetails?.end_time ?? null
+      : null;
+    if (!endDate && startDate && endTime) {
+      endDate = startDate;
+    }
+
+    let locationType = easyImportDetails?.location_type ?? null;
+    const locationName = normalizeString(easyImportDetails?.location_name ?? null);
+    const locationAddress = normalizeString(
+      easyImportDetails?.location_address ?? null,
+    );
+    const onlineLink = normalizeString(easyImportDetails?.online_link ?? null);
+
+    if (!locationType) {
+      if (onlineLink) {
+        locationType = "online";
+      } else if (locationName || locationAddress) {
+        locationType = "custom";
+      }
+    }
+    if (
+      locationType &&
+      locationType !== "online" &&
+      !locationName &&
+      !locationAddress
+    ) {
+      locationType = "tba";
+    }
+
+    const category = normalizeCategory(easyImportDetails?.category ?? null);
+    const extractedName = normalizeString(easyImportDetails?.name ?? null);
+    let safeName: string | null = extractedName;
+    if (safeName) {
+      try {
+        const { data: existingName, error: nameCheckError } =
+          await supabaseAdmin
+            .from("events")
+            .select("id")
+            .eq("creator_profile_id", creatorProfileId)
+            .eq("name", safeName)
+            .limit(1);
+        if (nameCheckError) {
+          console.warn("Easy import name check failed:", nameCheckError.message);
+          safeName = null;
+        } else if (existingName && existingName.length > 0) {
+          safeName = null;
+        }
+      } catch (err) {
+        console.warn("Easy import name check error:", err);
+        safeName = null;
+      }
+    }
+
+    const startTimestamp =
+      startDate && startTime
+        ? buildUtcTimestamp(startDate, startTime, resolvedTimezone)
+        : null;
+    const endTimestamp =
+      endDate && endTime
+        ? buildUtcTimestamp(endDate, endTime, resolvedTimezone)
+        : null;
 
     /* ── Event ID = Post ID ── */
     const eventId = post.id;
@@ -211,24 +477,45 @@ export async function POST(request: NextRequest) {
 
     const { error: eventErr } = await supabaseAdmin.from("events").insert({
       id: eventId,
-      name: "",
+      name: safeName,
       description: post.caption || null,
-      start: null,
-      end: null,
+      start: startTimestamp,
+      end: endTimestamp,
       creator_profile_id: creatorProfileId,
       status: "draft",
       published_at: null,
-      is_online: false,
+      is_online: locationType === "online",
       // thumbnail,
       // location_id: null,
-      category: null,
+      category,
       tags: [],
-      timezone: null,
+      timezone: resolvedTimezone,
       source: "instagram",
+      location_type: locationType ?? "tba",
+      online_link: locationType === "online" ? onlineLink : null,
     });
 
     if (eventErr) {
       throw new Error(`Event insert failed: ${eventErr.message}`);
+    }
+
+    /* ── Insert a venue for easy import (physical/custom only) ── */
+    if (
+      locationType &&
+      locationType !== "online" &&
+      locationType !== "tba" &&
+      (locationName || locationAddress)
+    ) {
+      await supabaseAdmin.from("event_venues").insert({
+        event_id: eventId,
+        type: locationType,
+        venue: locationName,
+        address: locationAddress,
+        latitude: null,
+        longitude: null,
+        online_link: null,
+        sort_order: 0,
+      });
     }
 
     /* ── Insert carousel images ── */
