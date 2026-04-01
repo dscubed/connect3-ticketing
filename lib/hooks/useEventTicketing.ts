@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { toast } from "sonner";
 
 interface UseEventTicketingOptions {
@@ -21,6 +21,10 @@ export function useEventTicketing({
 }: UseEventTicketingOptions) {
   const [ticketingEnabled, setTicketingEnabled] = useState(initialEnabled);
   const [ticketingChanging, setTicketingChanging] = useState(false);
+
+  useEffect(() => {
+    setTicketingEnabled(initialEnabled);
+  }, [initialEnabled]);
 
   const enableTicketing = useCallback(async () => {
     if (!eventId) return;
