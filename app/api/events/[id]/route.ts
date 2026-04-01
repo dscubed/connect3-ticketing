@@ -430,7 +430,7 @@ export async function PATCH(
     /* ── Verify ownership, accepted collaborator, or club admin ── */
     const { data: existing } = await supabaseAdmin
       .from("events")
-      .select("creator_profile_id, location_id")
+      .select("creator_profile_id" /* , location_id — removed: column no longer exists */)
       .eq("id", eventId)
       .single();
 
