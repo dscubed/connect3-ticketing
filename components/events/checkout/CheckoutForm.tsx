@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, CreditCard, Minus, Plus } from "lucide-react";
+import { ArrowLeft, Loader2, CreditCard, Minus, Plus, UserCheck } from "lucide-react";
 import { DndContext, closestCenter } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -164,6 +164,40 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
       },
     }));
   };
+
+  /* ── Buy for myself: auto-fill current user's data ── */
+  const user = useAuthStore((s) => s.user);
+  const [fillingMyData, setFillingMyData] = useState(false);
+
+  const handleBuyForMyself = useCallback(
+    async (ticketIndex: number) => {
+      if (!user) return;
+      setFillingMyData(true);
+      try {
+        // Fetch full profile (first_name + last_name) from API
+        const res = await fetch(
+          `/api/profiles/fetch?id=${user.id}&select=first_name,last_name`,
+        );
+        if (res.ok) {
+          const { data } = await res.json();
+          setAttendeeData((prev) => ({
+            ...prev,
+            [ticketIndex]: {
+              ...(prev[ticketIndex] ?? {}),
+              first_name: data?.first_name ?? "",
+              last_name: data?.last_name ?? "",
+              email: user.email ?? "",
+            },
+          }));
+        }
+      } catch {
+        toast.error("Failed to load your details");
+      } finally {
+        setFillingMyData(false);
+      }
+    },
+    [user],
+  );
 
   const isEditing = !previewMode;
 
@@ -648,6 +682,29 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
                               title="Checkout Info"
                               layout={theme.layout}
                               isDark={isDark}
+                              headerRight={
+                                user ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className={cn(
+                                      "gap-1.5 text-xs",
+                                      isDark
+                                        ? "text-white/70 hover:text-white hover:bg-white/10"
+                                        : "text-black/60 hover:text-black hover:bg-black/10",
+                                    )}
+                                    onClick={() => handleBuyForMyself(i)}
+                                    disabled={fillingMyData}
+                                  >
+                                    {fillingMyData ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <UserCheck className="h-3.5 w-3.5" />
+                                    )}
+                                    Buy for myself
+                                  </Button>
+                                ) : undefined
+                              }
                             >
                               <div className="grid gap-4 sm:grid-cols-2">
                                 {CHECKOUT_PRESET_FIELDS.map((field) => (
@@ -716,6 +773,29 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
                         title="Checkout Info"
                         layout={theme.layout}
                         isDark={isDark}
+                        headerRight={
+                          user ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className={cn(
+                                "gap-1.5 text-xs",
+                                isDark
+                                  ? "text-white/70 hover:text-white hover:bg-white/10"
+                                  : "text-black/60 hover:text-black hover:bg-black/10",
+                              )}
+                              onClick={() => handleBuyForMyself(0)}
+                              disabled={fillingMyData}
+                            >
+                              {fillingMyData ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <UserCheck className="h-3.5 w-3.5" />
+                              )}
+                              Buy for myself
+                            </Button>
+                          ) : undefined
+                        }
                       >
                         <div className="grid gap-4 sm:grid-cols-2">
                           {CHECKOUT_PRESET_FIELDS.map((field) => (

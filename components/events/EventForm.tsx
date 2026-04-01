@@ -485,8 +485,8 @@ export default function EventForm({ data, eventId, mode }: EventFormProps) {
           )}
           <div
             className={cn(
-              "mx-auto max-w-4xl px-3 sm:px-6",
-              isVisitorPreview ? "py-6 sm:py-8" : "pb-6 pt-20 sm:pb-8",
+              "mx-auto max-w-4xl px-3 sm:px-6 pb-24!",
+              isVisitorPreview ? "py-6 sm:py-8" : "pb-6 pt-20",
               pageTextClass,
             )}
           >
