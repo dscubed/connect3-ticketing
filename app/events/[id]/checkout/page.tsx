@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { fetchEventServer } from "@/lib/api/fetchEventServer";
-import CheckoutForm from "@/components/events/checkout/CheckoutForm";
+import CheckoutForm from "@/components/events/checkout/checkout-form/CheckoutForm";
 
 export default async function CheckoutPage({
   params,
