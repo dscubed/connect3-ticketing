@@ -133,7 +133,7 @@ async function extractEasyImportDetails({
     },
     body: JSON.stringify({
       model: "gpt-5-mini",
-      temperature: 0.2,
+      temperature: 1,
       messages: [
         {
           role: "system",
