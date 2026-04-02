@@ -172,7 +172,6 @@ async function extractEasyImportDetails({
                 type: ["array", "null"],
                 items: { type: "string", enum: EVENT_TAGS },
                 maxItems: 5,
-                uniqueItems: true,
               },
               faqs: {
                 type: ["array", "null"],
