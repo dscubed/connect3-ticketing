@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { checkEventEditAccess } from "@/lib/api/fetchEventServer";
-import CheckoutForm from "@/components/events/checkout/checkout-form";
+import CheckoutForm from "@/components/events/checkout/checkout-form/CheckoutForm";
 import Unauthorized from "../../edit/Unauthorized";
 
 export default async function CheckoutEditPage({

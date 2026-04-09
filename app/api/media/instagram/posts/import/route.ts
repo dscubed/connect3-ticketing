@@ -21,6 +21,30 @@ const EVENT_CATEGORIES = [
 
 type EventCategory = (typeof EVENT_CATEGORIES)[number];
 
+const EVENT_TAGS = [
+  "Free",
+  "Paid",
+  "Food & Drinks",
+  "Outdoor",
+  "Indoor",
+  "Live Music",
+  "Networking",
+  "Career",
+  "Party",
+  "Cultural",
+  "Competition",
+  "Charity",
+  "Tech",
+  "Study",
+] as const;
+
+type EventTag = (typeof EVENT_TAGS)[number];
+
+type EasyImportFAQ = {
+  question: string;
+  answer: string;
+};
+
 type EasyImportResult = {
   name: string | null;
   start_date: string | null;
@@ -33,6 +57,8 @@ type EasyImportResult = {
   location_address: string | null;
   online_link: string | null;
   category: EventCategory | null;
+  tags: EventTag[] | null;
+  faqs: EasyImportFAQ[] | null;
 };
 
 function isValidDate(value: string | null) {
@@ -89,6 +115,9 @@ async function extractEasyImportDetails({
     "If an online meeting link is present, set location_type to online and include online_link.",
     "Choose a category from this list or return null: " +
       EVENT_CATEGORIES.join(", "),
+    "Extract up to 5 tags from this list if clearly implied; otherwise return null: " +
+      EVENT_TAGS.join(", "),
+    "If the caption contains explicit FAQ-style Q/A (e.g. 'Q:'/'A:' or an 'FAQ' section), extract them into faqs as question/answer pairs. Otherwise return null.",
     "",
     `Today: ${today}`,
     "",
@@ -139,6 +168,24 @@ async function extractEasyImportDetails({
                 type: ["string", "null"],
                 enum: [...EVENT_CATEGORIES, null],
               },
+              tags: {
+                type: ["array", "null"],
+                items: { type: "string", enum: EVENT_TAGS },
+                maxItems: 5,
+              },
+              faqs: {
+                type: ["array", "null"],
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    question: { type: "string" },
+                    answer: { type: "string" },
+                  },
+                  required: ["question", "answer"],
+                },
+                maxItems: 5,
+              },
             },
             required: [
               "name",
@@ -152,6 +199,8 @@ async function extractEasyImportDetails({
               "location_address",
               "online_link",
               "category",
+              "tags",
+              "faqs",
             ],
           },
         },
@@ -312,7 +361,22 @@ export async function POST(request: NextRequest) {
     }
 
     const category = normalizeCategory(easyImportDetails?.category ?? null);
+    const extractedTags = Array.from(
+      new Set(
+        (easyImportDetails?.tags ?? [])
+          .map((tag) => normalizeString(tag) as EventTag | null)
+          .filter((tag): tag is EventTag => !!tag && EVENT_TAGS.includes(tag)),
+      ),
+    ).slice(0, 5);
+    const tags = extractedTags.length > 0 ? extractedTags : [];
     const extractedName = normalizeString(easyImportDetails?.name ?? null);
+    const faqItems = (easyImportDetails?.faqs ?? [])
+      .map((faq) => ({
+        question: normalizeString(faq.question) ?? "",
+        answer: normalizeString(faq.answer) ?? "",
+      }))
+      .filter((faq) => faq.question && faq.answer)
+      .slice(0, 5);
     let safeName: string | null = extractedName;
     if (safeName) {
       try {
@@ -488,7 +552,7 @@ export async function POST(request: NextRequest) {
       // thumbnail,
       // location_id: null,
       category,
-      tags: [],
+      tags,
       timezone: resolvedTimezone,
       source: "instagram",
       location_type: locationType ?? "tba",
@@ -497,6 +561,16 @@ export async function POST(request: NextRequest) {
 
     if (eventErr) {
       throw new Error(`Event insert failed: ${eventErr.message}`);
+    }
+
+    /* ── Insert FAQ section (if any) ── */
+    if (faqItems.length > 0) {
+      await supabaseAdmin.from("event_sections").insert({
+        event_id: eventId,
+        type: "faq",
+        data: { items: faqItems },
+        sort_order: 0,
+      });
     }
 
     /* ── Insert a venue for easy import (physical/custom only) ── */

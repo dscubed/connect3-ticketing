@@ -23,7 +23,6 @@ import {
   type EventEditorContextValue,
 } from "@/components/events/shared/EventEditorContext";
 import { EditorToolbox } from "@/components/events/shared/EditorToolbox";
-import { useNavbarDisplay } from "@/components/providers/NavbarDisplayProvider";
 import { useAuthStore } from "@/stores/authStore";
 import { useEventRealtime } from "@/lib/hooks/useEventRealtime";
 import { useDocumentDark } from "@/lib/hooks/useDocumentDark";
@@ -67,18 +66,10 @@ interface CheckoutFormProps {
 export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
   const router = useRouter();
   const profile = useAuthStore((s) => s.profile);
-  const { setNavbarDisplay } = useNavbarDisplay();
   const [eventData, setEventData] = useState<FetchedEventData | null>(null);
   const [loading, setLoading] = useState(true);
   const [previewMode, setPreviewMode] = useState(mode === "preview");
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
-
-  /* ── Hide the site navbar in visitor/preview mode so gradient covers full viewport ── */
-  useEffect(() => {
-    if (mode !== "preview") return;
-    setNavbarDisplay(false);
-    return () => setNavbarDisplay(true);
-  }, [mode, setNavbarDisplay]);
 
   /* ── Ticket selection (preview mode) ── */
   const [selectedTierId, setSelectedTierId] = useState<string>("");
