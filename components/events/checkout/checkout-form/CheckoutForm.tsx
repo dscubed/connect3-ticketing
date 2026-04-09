@@ -31,6 +31,7 @@ import { useEventTicketing } from "@/lib/hooks/useEventTicketing";
 import { useCheckoutFields } from "@/lib/hooks/useCheckoutFields";
 import { useAttendeeData } from "@/lib/hooks/useAttendeeData";
 import type { FieldGroup } from "@/lib/api/patchEvent";
+import { createCheckoutSession } from "@/app/actions/checkout";
 import { toast } from "sonner";
 import { CheckoutEditor } from "./CheckoutEditor";
 import { CheckoutPreview } from "./CheckoutPreview";
@@ -280,6 +281,10 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
   const solidBg =
     theme.layout === "card" && theme.bgColor ? theme.bgColor : undefined;
 
+
+  // TODO remove this once we have dynamic price ids set up I'm just using this to test a single
+  const tmpPriceId = "price_1THfJ6Gxt5610wKLTu9axFmL"
+
   const content = (
     <div
       className={cn("min-h-screen pb-12", pageBgClass, isDark && "dark")}
@@ -398,10 +403,7 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
                   />
                   <div>
                     <p className="text-sm font-medium">Payment processing</p>
-                    <p className={cn("mt-1 text-xs", colors.textMuted)}>
-                      Collect payments directly through Connect3. Stripe
-                      integration is coming soon.
-                    </p>
+                    <Button onClick={() => createCheckoutSession(tmpPriceId)}>Test Payment</Button>
                   </div>
                 </div>
               </SectionWrapper>
