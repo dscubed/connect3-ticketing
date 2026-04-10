@@ -3,7 +3,8 @@
 import Stripe from 'stripe';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { getStripeCustomerData, syncOrCreateStripeData } from '@/lib/supabase/stripeKV';
+import { AttendeeData } from '@/lib/hooks/useAttendeeData';
+import { TicketingField, TicketingFieldDraft } from '@/lib/types/ticketing';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -12,7 +13,9 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
  * @param priceId 
  * @returns 
  */
-export async function createCheckoutSession(priceId: string) {
+export async function createCheckoutSession(priceId: string, attendeeData: AttendeeData, additionalFields?: TicketingFieldDraft[], quantity?: number) {
+  console.log("ATTENDEE ", Object.keys(attendeeData))
+  console.log("FIELDS ", additionalFields);
   // Perhaps change price id to support creating checkout session for multiple items
   // Unless we want to enforce buy one ticket at a time and not have a cart system
 

@@ -4,6 +4,8 @@ import { useState, useCallback } from "react";
 import { useAuthStore } from "@/stores/authStore";
 import { toast } from "sonner";
 
+export type AttendeeData = Record<number, Record<string, string>>;
+
 /**
  * Manages per-ticket attendee form data and "Buy for myself" autofill.
  *
@@ -11,9 +13,7 @@ import { toast } from "sonner";
  */
 export function useAttendeeData() {
   const user = useAuthStore((s) => s.user);
-  const [attendeeData, setAttendeeData] = useState<
-    Record<number, Record<string, string>>
-  >({});
+  const [attendeeData, setAttendeeData] = useState<AttendeeData>({});
   const [fillingMyData, setFillingMyData] = useState(false);
 
   const getFieldValue = (ticketIndex: number, fieldKey: string): string =>

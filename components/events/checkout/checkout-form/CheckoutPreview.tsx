@@ -138,6 +138,7 @@ export function CheckoutPreview({
                 ? `$${selectedTier.price.toFixed(2)}`
                 : "Free"}
             </p>
+            {/* Additional processing fee label */}
             {selectedTier.price > 0 && (
               <p className={cn("text-xs", colors.textMuted)}>
                 + ${FEE_PER_TICKET.toFixed(2)} fee

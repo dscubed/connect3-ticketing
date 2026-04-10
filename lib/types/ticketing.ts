@@ -8,6 +8,9 @@ export interface TicketingConfig {
   updated_at: string;
 }
 
+/**
+ * Admin only. Shape of a ticket field when creating an event 
+ */
 export interface TicketingField {
   id: string;
   event_id: string;

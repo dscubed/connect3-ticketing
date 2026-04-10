@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { fetchEvent, type FetchedEventData } from "@/lib/api/fetchEvent";
 import { SectionWrapper } from "@/components/events/preview/SectionWrapper";
@@ -87,12 +86,14 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
   /* ── Attendee data (hook) ── */
   const {
     user,
+    attendeeData,
     getFieldValue,
     setFieldValue,
     handleBuyForMyself,
     fillingMyData,
   } = useAttendeeData();
 
+  console.log(attendeeData)
   const isEditing = !previewMode;
 
   /* ── Load event data ── */
@@ -107,13 +108,17 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
       .finally(() => setLoading(false));
   }, [eventId, router]);
 
+  const handlePaymentStart = async () => {
+    await createCheckoutSession(tmpPriceId, attendeeData, fields, quantity);
+  }
+
   /* ── Realtime sync ── */
   const onRemoteChange = useCallback(
     (groups: FieldGroup[]) => {
       if (groups.length > 0) {
         fetchEvent(eventId)
           .then((result) => setEventData(result))
-          .catch(() => {});
+          .catch(() => { });
       }
     },
     [eventId],
@@ -193,7 +198,7 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
       isEditing: !previewMode,
       toolbarCollapsed,
       setToolbarCollapsed,
-      markDirty: () => {},
+      markDirty: () => { },
       flush: flushFields,
       isAutoSaving: savingFields,
       lastSavedAt,
@@ -206,27 +211,27 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
       ticketingEnabled,
       ticketingChanging,
       handleBack: () => router.replace(`/events/${eventId}/edit`),
-      handlePublish: () => {},
-      handleUnpublish: () => {},
+      handlePublish: () => { },
+      handleUnpublish: () => { },
       enableTicketing: handleEnableTicketing,
       disableTicketing: handleDisableTicketing,
       theme,
-      setTheme: () => {},
-      setThemeOpen: () => {},
+      setTheme: () => { },
+      setThemeOpen: () => { },
       colors,
       isDark,
       hasName: !!eventData.formData.name,
       form: eventData.formData as EventFormData,
-      setForm: () => {},
-      updateField: () => {},
+      setForm: () => { },
+      updateField: () => { },
       carouselImages: eventData.carouselImages ?? [],
       hostsData: [],
-      setHostsData: () => {},
+      setHostsData: () => { },
       creatorProfile: (profile ?? {}) as ClubProfile,
       collaborators,
       getFieldLock: () => ({ locked: false }),
-      handleFieldFocus: () => {},
-      handleFieldBlur: () => {},
+      handleFieldFocus: () => { },
+      handleFieldBlur: () => { },
     };
   }, [
     mode,
@@ -283,7 +288,7 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
     >
       {mode !== "preview" && <EditorToolbox />}
 
-      {/* Preview mode — transparent fixed back button floating over gradient */}
+      {/* Customer View — transparent fixed back button floating over gradient */}
       {mode === "preview" && (
         <div className="fixed top-0 left-0 right-0 z-50 px-3 py-2 sm:px-6">
           <Button
@@ -348,7 +353,7 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
             />
           )}
 
-          {/* Preview mode: ticket selection + attendee forms */}
+          {/* Customer view: ticket selection + attendee forms */}
           {!isEditing && (
             <CheckoutPreview
               layout={theme.layout}
@@ -379,22 +384,13 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
                 title="Payment"
                 layout={theme.layout}
                 isDark={isDark}
-                headerRight={
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] px-1.5 py-0 leading-4"
-                  >
-                    Coming Soon
-                  </Badge>
-                }
               >
                 <div className="flex flex-col items-center gap-3 py-4 text-center">
                   <CreditCard
                     className={cn("h-10 w-10 opacity-40", colors.textMuted)}
                   />
                   <div>
-                    <p className="text-sm font-medium">Payment processing</p>
-                    <Button onClick={() => createCheckoutSession(tmpPriceId)}>Test Payment</Button>
+                    <Button onClick={handlePaymentStart}>Test Payment</Button>
                   </div>
                 </div>
               </SectionWrapper>

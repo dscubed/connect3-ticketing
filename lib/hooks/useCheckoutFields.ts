@@ -71,6 +71,7 @@ export function useCheckoutFields({
   const saveFields = useCallback(
     async (fieldsToSave: TicketingFieldDraft[]) => {
       setSavingFields(true);
+      console.log("SAVING");
       try {
         const res = await fetch(`/api/events/${eventId}/ticketing`, {
           method: "PATCH",
@@ -102,7 +103,7 @@ export function useCheckoutFields({
     [eventId, broadcast],
   );
 
-  /* ── Flush: immediately save pending changes ── */
+  /* Admin only. immediately save pending changes */
   const flushFields = useCallback(async () => {
     if (autoSaveTimer.current) {
       clearTimeout(autoSaveTimer.current);
@@ -113,7 +114,9 @@ export function useCheckoutFields({
     }
   }, [fieldsDirty, fields, saveFields]);
 
-  /* ── Auto-save debounce ── */
+  /* 
+  Clubs admin only. Attempt to autosave fields during operations like 
+  */
   useEffect(() => {
     if (!fieldsDirty || mode !== "edit") return;
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
@@ -148,7 +151,7 @@ export function useCheckoutFields({
     setFieldsDirty(true);
   }, []);
 
-  /* ── DnD ── */
+  /* Admin only: Drag-n-Drop stuff */
   const dndSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor),
