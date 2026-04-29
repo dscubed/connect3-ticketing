@@ -109,7 +109,7 @@ export default function CheckoutForm({ eventId, mode }: CheckoutFormProps) {
   }, [eventId, router]);
 
   const handlePaymentStart = async () => {
-    await createCheckoutSession(tmpPriceId, attendeeData, fields, quantity);
+    await createCheckoutSession(eventId, tmpPriceId, attendeeData, fields, quantity);
   }
 
   /* ── Realtime sync ── */

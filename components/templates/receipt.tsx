@@ -10,11 +10,12 @@ export interface LineItem {
 
 interface ReceiptTemplateProps {
   firstName: string;
-  orderNumber: string;
+  orderId: string;
+  ticketQrCodeUrl: string;
   lineItems: LineItem[];
 }
 
-export function ReceiptTemplate({ firstName, orderNumber, lineItems }: ReceiptTemplateProps) {
+export function ReceiptTemplate({ firstName, orderId, ticketQrCodeUrl, lineItems }: ReceiptTemplateProps) {
   return (
     <div style={{ fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', color: '#333' }}>
 
@@ -36,6 +37,15 @@ export function ReceiptTemplate({ firstName, orderNumber, lineItems }: ReceiptTe
           {lineItems[0]?.name}
         </h1>
       </div>
+
+      {ticketQrCodeUrl && (
+        <div style={{ textAlign: 'center', padding: '16px' }}>
+          <img src={ticketQrCodeUrl} alt="QR Code" style={{ width: '150px', height: '150px' }} />
+          <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#888' }}>
+            Show this code at entry
+          </p>
+        </div>
+      )}
 
       {/* Line items */}
       <div style={{ padding: '16px', borderTop: '1px solid #eee', marginTop: '16px' }}>
@@ -74,7 +84,7 @@ export function ReceiptTemplate({ firstName, orderNumber, lineItems }: ReceiptTe
       {/* Order number */}
       <div style={{ textAlign: 'center', padding: '16px', borderTop: '1px solid #eee' }}>
         <p style={{ margin: 0, fontSize: '13px', color: '#888' }}>
-          <strong>Order number:</strong> {orderNumber}
+          <strong>Order number:</strong> {orderId}
         </p>
       </div>
 

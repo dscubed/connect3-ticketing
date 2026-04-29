@@ -1,10 +1,9 @@
 import { headers } from "next/headers";
 import Stripe from "stripe";
 import { stripe } from "@/lib/stripe/serverInstance";
-import { ReceiptTemplate, LineItem } from "@/components/templates/receipt";
-import { Resend } from "resend";
-
-const resend = new Resend(process.env.RESEND_API_KEY!);
+import { LineItem } from "@/components/templates/receipt";
+import { sendTicketEmail } from "@/lib/events/check-in/sendTicketEmail";
+import { generateQRCodeBuffer } from "@/lib/events/qr";
 
 // Allowed events for only one time payments
 // Add more to support things like subscriptions
@@ -39,6 +38,11 @@ export async function POST(request: Request) {
       // The main event. Runs after a user creates a purchase through Stripe
 
       const _session = event.data.object as Stripe.Checkout.Session;
+      if (!_session.metadata) {
+        throw new Error("Metadata missing");
+      }
+
+      const eventId = _session.metadata.eventId;
       const customerId = _session.customer as string | null;
 
       // Expand the current session to get more attributes
@@ -61,32 +65,23 @@ export async function POST(request: Request) {
 
       const email = completeSession.customer_details?.email;
 
-      // TODO Migrate Resend stuff to a separate function as paying for free events will bypass Stripe entirely
-      // And probably session expansion stuff too
-      console.log(`Payment completed for email ${email ?? "no email"}`);
+      // TODO use a random url before making the scan-in endpoint
+      const qrBuffer = await generateQRCodeBuffer("https://johnling.me");
+      console.log("Created QR code");
 
-      const { data, error } = await resend.emails.send({
-        from: "Connect3 <ticketing@mail.connect3.app>",
-        to: [email!],
-        subject: "You're Checked In",
-        // react: ReceiptTemplate({ firstName: "Tanat" })
-        react: ReceiptTemplate({
-          firstName: customerName ?? "Buyer",
-          orderNumber: completeSession.id,
-          lineItems: lineItems
-        })
-      });
-
-      if (error) {
-        return Response.json({ error }, { status: 500 });
-      }
+      console.log("Sending email");
+      await sendTicketEmail(email!!, customerName ?? "Buyer", completeSession.id, qrBuffer, lineItems);
+      console.log("Sent email");
 
       if (!customerId) {
         // Guest checkout — no Stripe customer was created
         return new Response("No customer ID on session", { status: 200 });
       }
 
-      return Response.json({ data })
+      // Add potential code for loyalty points here
+
+
+      return Response.json("Purchase success", { status: 200 });
     }
 
     if (event.type === "payment_intent.succeeded") {

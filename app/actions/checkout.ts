@@ -13,7 +13,13 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
  * @param priceId 
  * @returns 
  */
-export async function createCheckoutSession(priceId: string, attendeeData: AttendeeData, additionalFields?: TicketingFieldDraft[], quantity?: number) {
+export async function createCheckoutSession(
+  eventId: string,
+  priceId: string,
+  attendeeData: AttendeeData,
+  additionalFields?: TicketingFieldDraft[],
+  quantity?: number
+) {
   console.log("ATTENDEE ", Object.keys(attendeeData))
   console.log("FIELDS ", additionalFields);
   // Perhaps change price id to support creating checkout session for multiple items
@@ -56,14 +62,13 @@ export async function createCheckoutSession(priceId: string, attendeeData: Atten
     line_items: [
       {
         price: priceId,
-        quantity: 1,
+        quantity: quantity,
       },
     ],
     success_url: `${process.env.NEXT_PUBLIC_SITE_URL}/success?session_id={CHECKOUT_SESSION_ID}`, // Change
-    // metadata: {
-    //   userId: user.id,
-    //   userEmail: user.email || null,
-    // },
+    metadata: {
+      event_id: eventId
+    },
   });
 
   // Redirect to Stripe's checkout page
